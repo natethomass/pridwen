@@ -1,0 +1,13 @@
+[Unit]
+Description=Pridwen narrated boot: desktop
+Documentation=https://github.com/natethomass/pridwen
+ConditionPathExists=/run/plymouth/pid
+After=multi-user.target
+Before=display-manager.service plymouth-quit.service plymouth-quit-wait.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/plymouth display-message --text="Starting the desktop."
+
+[Install]
+WantedBy=graphical.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Pridwen narrated boot: network and firewall
+Documentation=https://github.com/natethomass/pridwen
+ConditionPathExists=/run/plymouth/pid
+After=network.target firewalld.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/plymouth display-message --text="Network is up. The firewall drops everything inbound until you say otherwise."
+
+[Install]
+WantedBy=multi-user.target

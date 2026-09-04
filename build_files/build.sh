@@ -18,7 +18,7 @@ dnf5 install -y \
     gnome-initial-setup \
     zsh \
     tmux \
-    fastfetch
+    fastfetch \n    plymouth-plugin-script \n    plymouth-plugin-label \n    darkman
 
 ### 3. Identity
 # Keep ID=fedora: tooling keys on it. Brand everything else.
@@ -58,6 +58,20 @@ EOF
 dconf update
 # Register the mark with the icon cache so Settings > About and GDM can find it.
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+
+# Boot splash: /etc/plymouth/plymouthd.conf selects the pridwen theme. The initramfs
+# carries its own copy of the theme, so regenerate it (same recipe as Bazzite/Bluefin).
+plymouth-set-default-theme pridwen
+chmod 0755 /usr/share/darkman/*.sh
+KVER="$(dnf5 repoquery --installed --queryformat='%{evr}.%{arch}' kernel | head -n1)"
+echo "Regenerating initramfs for kernel ${KVER}"
+export DRACUT_NO_XATTR=1
+dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v --add ostree     -f "/usr/lib/modules/${KVER}/initramfs.img"
+chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
+
+# Narrated boot lines and the day/night switcher.
+systemctl enable pridwen-narrate-disks.service pridwen-narrate-network.service pridwen-narrate-desktop.service
+systemctl --global enable darkman.service
 
 ### 6. Services
 systemctl enable podman.socket

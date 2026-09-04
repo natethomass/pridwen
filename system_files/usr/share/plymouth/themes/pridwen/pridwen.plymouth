@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=Pridwen
+Description=The Pridwen mark draws in over the night canvas, with a progress rail and a narrated boot.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/pridwen
+ScriptFile=/usr/share/plymouth/themes/pridwen/pridwen.script
+Font=Adwaita Sans 11
+TitleFont=Adwaita Sans 14

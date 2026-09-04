@@ -1,0 +1,14 @@
+[Unit]
+Description=Pridwen narrated boot: disks
+Documentation=https://github.com/natethomass/pridwen
+DefaultDependencies=no
+ConditionPathExists=/run/plymouth/pid
+After=local-fs.target plymouth-start.service
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/plymouth display-message --text="Disks are mounted. Your system is one read-only image; only /etc and /var can change."
+
+[Install]
+WantedBy=sysinit.target

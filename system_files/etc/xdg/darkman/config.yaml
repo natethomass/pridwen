@@ -1,0 +1,11 @@
+# Pridwen "follow the sun": darkman flips GNOME between day and night at sunrise
+# and sunset. Location comes from geoclue (GNOME Shell is the agent); until it
+# resolves, the fallback below is a mid-US latitude so the first day is sane.
+# Users who pick a fixed day or night in the welcome wizard get this service
+# disabled for their account (systemctl --user disable darkman).
+lat: 39.0
+lng: -95.0
+usegeoclue: true
+# GNOME's own portal answers colour-scheme queries from gsettings, so darkman
+# must not claim the settings portal.
+portal: false

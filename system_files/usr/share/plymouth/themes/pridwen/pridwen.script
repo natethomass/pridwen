@@ -1,0 +1,202 @@
+# Pridwen OS boot splash (Plymouth script plugin).
+#
+# Night canvas, the mark draws in over ~0.5 s and then breathes, a thin progress
+# rail underneath, and one line of narration below the rail. Narration lines are
+# sent by the pridwen-narrate-* units with `plymouth display-message`.
+# LUKS unlock shows a prompt and bullets in the same place.
+
+# ---- canvas ---------------------------------------------------------------
+Window.SetBackgroundTopColor(0.067, 0.075, 0.094);      # #111318
+Window.SetBackgroundBottomColor(0.035, 0.039, 0.051);   # #090A0D
+
+cream.r = 0.949; cream.g = 0.929; cream.b = 0.890;      # #F2EDE3
+muted.r = 0.667; muted.g = 0.647; muted.b = 0.612;      # inkSoft (night)
+
+fun cx() { return Window.GetX() + Window.GetWidth() / 2; }
+fun cy() { return Window.GetY() + Window.GetHeight() / 2; }
+
+# ---- the mark -------------------------------------------------------------
+FRAMES = 24;
+for (i = 0; i < FRAMES; i++)
+  {
+    if (i < 10) name = "mark-0" + i + ".png";
+    else        name = "mark-"  + i + ".png";
+    mark.frame[i] = Image(name);
+  }
+mark.sprite = Sprite(mark.frame[0]);
+mark.w = mark.frame[0].GetWidth();
+mark.h = mark.frame[0].GetHeight();
+mark.x = cx() - mark.w / 2;
+mark.y = cy() - mark.h / 2 - 40;
+mark.sprite.SetPosition(mark.x, mark.y, 10);
+mark.sprite.SetOpacity(1);
+mark.index = 0;          # current reveal frame
+mark.tick = 0;           # refresh ticks (50 Hz)
+mark.angle = 0;          # breathing phase
+
+# ---- progress rail --------------------------------------------------------
+rail.track = Image("rail-track.png");
+rail.fill_src = Image("rail-fill.png");
+rail.w = rail.track.GetWidth();
+rail.h = rail.track.GetHeight();
+rail.x = cx() - rail.w / 2;
+rail.y = mark.y + mark.h + 36;
+rail.track_sprite = Sprite(rail.track);
+rail.track_sprite.SetPosition(rail.x, rail.y, 5);
+rail.fill_sprite = Sprite();
+rail.fill_sprite.SetPosition(rail.x, rail.y, 6);
+rail.shown = 0;          # eased progress actually drawn, 0..1
+rail.target = 0;         # progress reported by plymouthd
+
+fun set_rail(p)
+  {
+    if (p < 0.01) p = 0.01;
+    if (p > 1) p = 1;
+    w = Math.Int(rail.w * p);
+    if (w < 2) w = 2;
+    rail.fill_sprite.SetImage(rail.fill_src.Scale(w, rail.h));
+  }
+set_rail(0.01);
+
+fun progress_callback(duration, progress)
+  {
+    if (progress > rail.target) rail.target = progress;
+  }
+Plymouth.SetBootProgressFunction(progress_callback);
+
+# ---- narration line -------------------------------------------------------
+msg.sprite = Sprite();
+msg.y = rail.y + rail.h + 22;
+msg.text = "";
+
+fun show_text(text, r, g, b)
+  {
+    img = Image.Text(text, r, g, b, 1, "Adwaita Sans 11");
+    if (img)
+      {
+        msg.sprite.SetImage(img);
+        msg.sprite.SetPosition(cx() - img.GetWidth() / 2, msg.y, 20);
+        msg.sprite.SetOpacity(1);
+      }
+  }
+
+fun display_message_callback(text)
+  {
+    msg.text = text;
+    show_text(text, muted.r, muted.g, muted.b);
+  }
+fun hide_message_callback(text)
+  {
+    msg.sprite.SetOpacity(0);
+  }
+Plymouth.SetDisplayMessageFunction(display_message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);
+
+# ---- disk unlock (LUKS) ---------------------------------------------------
+status = "normal";
+pw.bullet = Image("bullet.png");
+pw.entry = Image("entry.png");
+pw.entry_sprite = Sprite();
+pw.prompt_sprite = Sprite();
+
+fun pw_hide()
+  {
+    pw.entry_sprite.SetOpacity(0);
+    pw.prompt_sprite.SetOpacity(0);
+    for (i = 0; pw.dots[i]; i++) pw.dots[i].SetOpacity(0);
+  }
+
+fun display_normal_callback()
+  {
+    status = "normal";
+    pw_hide();
+    if (msg.text != "") msg.sprite.SetOpacity(1);
+  }
+
+fun display_password_callback(prompt, bullets)
+  {
+    status = "password";
+    msg.sprite.SetOpacity(0);
+
+    # prompt above the entry box
+    if (prompt == "") prompt = "Unlock your disk";
+    pimg = Image.Text(prompt, cream.r, cream.g, cream.b, 1, "Adwaita Sans 12");
+    if (pimg)
+      {
+        pw.prompt_sprite.SetImage(pimg);
+        pw.prompt_sprite.SetPosition(cx() - pimg.GetWidth() / 2, rail.y + rail.h + 22, 20);
+        pw.prompt_sprite.SetOpacity(1);
+      }
+
+    ex = cx() - pw.entry.GetWidth() / 2;
+    ey = rail.y + rail.h + 52;
+    pw.entry_sprite.SetImage(pw.entry);
+    pw.entry_sprite.SetPosition(ex, ey, 20);
+    pw.entry_sprite.SetOpacity(1);
+
+    bw = pw.bullet.GetWidth();
+    gap = 6;
+    total = bullets * (bw + gap) - gap;
+    if (total > pw.entry.GetWidth() - 24) total = pw.entry.GetWidth() - 24;
+    start = cx() - total / 2;
+    for (i = 0; pw.dots[i] || i < bullets; i++)
+      {
+        if (!pw.dots[i]) pw.dots[i] = Sprite(pw.bullet);
+        pw.dots[i].SetPosition(start + i * (bw + gap), ey + pw.entry.GetHeight() / 2 - bw / 2, 21);
+        if (i < bullets && start + i * (bw + gap) < ex + pw.entry.GetWidth() - 12 - bw)
+          pw.dots[i].SetOpacity(1);
+        else
+          pw.dots[i].SetOpacity(0);
+      }
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+# ---- animation loop (50 Hz) ------------------------------------------------
+quitting = 0;
+fade = 1;
+
+fun refresh_callback()
+  {
+    mark.tick++;
+
+    # draw-in: one frame per tick until fully revealed (~0.5 s)
+    if (mark.index < FRAMES - 1)
+      {
+        mark.index++;
+        mark.sprite.SetImage(mark.frame[mark.index]);
+      }
+    else
+      {
+        # breathe once revealed: 0.86..1.0 over ~4 s
+        mark.angle += (2 * 3.14159) / 200;
+        op = 0.93 + 0.07 * Math.Cos(mark.angle);
+        mark.sprite.SetOpacity(op * fade);
+      }
+
+    # ease the rail toward the reported progress; never move backwards
+    if (rail.shown < rail.target)
+      {
+        rail.shown += (rail.target - rail.shown) * 0.08;
+        if (rail.target - rail.shown < 0.002) rail.shown = rail.target;
+        set_rail(rail.shown);
+      }
+
+    if (quitting)
+      {
+        fade -= 0.06;
+        if (fade < 0) fade = 0;
+        rail.track_sprite.SetOpacity(fade);
+        rail.fill_sprite.SetOpacity(fade);
+        msg.sprite.SetOpacity(fade);
+      }
+  }
+Plymouth.SetRefreshFunction(refresh_callback);
+
+fun quit_callback()
+  {
+    quitting = 1;
+    rail.target = 1;
+  }
+Plymouth.SetQuitFunction(quit_callback);
