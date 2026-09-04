@@ -125,6 +125,14 @@ stock three-class selector chain to win. Also removed Fedora's corner watermark 
 Two VMs now: "Pridwen M0" (installed from the M0 ISO, upgraded since) and "Pridwen M1"
 (fresh, for the wizard test). ISOs in `C:\Users\natet\VMs\pridwen\`.
 
+First fresh-install test of the wizard (2026-09-04): account created, password set, PAM
+session opened, then `TypeError: on_session_opened() takes 3 positional arguments but 4
+were given`: GdmGreeter::session-opened carries (service_name, session_id). Fixed; all GDM
+signal handlers now take *rest. The wizard also got a failure path (status + "Go to the
+login screen"), a 25 s watchdog, and journal logging. To re-run the wizard on an installed
+system without reinstalling: `sudo rpm-ostree kargs --append=gnome.initial-setup=1`, reboot
+(GDM forces initial setup from the kernel cmdline); remove the karg afterwards.
+
 Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
 keyboard pages in the wizard; Guide connection page is informational only until M5; VirtualBox has no guest additions.
 

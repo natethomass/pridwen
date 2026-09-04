@@ -347,17 +347,17 @@ class Wizard(Adw.Application):
             return
         log("connected to GDM greeter and user verifier")
         v = self.verifier
-        v.connect("info", lambda _v, s, m: log(f"pam info [{s}]: {m}"))
-        v.connect("problem", lambda _v, s, m: log(f"pam problem [{s}]: {m}"))
-        v.connect("info-query", lambda _v, s, q: log(f"pam info-query [{s}]: {q} (unanswered)"))
+        v.connect("info", lambda _v, s, m, *r: log(f"pam info [{s}]: {m}"))
+        v.connect("problem", lambda _v, s, m, *r: log(f"pam problem [{s}]: {m}"))
+        v.connect("info-query", lambda _v, s, q, *r: log(f"pam info-query [{s}]: {q} (unanswered)"))
         v.connect("secret-info-query", self.on_secret_query)
-        v.connect("verification-complete", lambda _v, s: log(f"verification complete [{s}]"))
+        v.connect("verification-complete", lambda _v, s, *r: log(f"verification complete [{s}]"))
         v.connect("verification-failed", self.on_verification_failed)
-        v.connect("conversation-stopped", lambda _v, s: log(f"conversation stopped [{s}]"))
-        v.connect("service-unavailable", lambda _v, s, m: log(f"service unavailable [{s}]: {m}"))
+        v.connect("conversation-stopped", lambda _v, s, *r: log(f"conversation stopped [{s}]"))
+        v.connect("service-unavailable", lambda _v, s, *r: log(f"service unavailable [{s}]: {r}"))
         self.greeter.connect("session-opened", self.on_session_opened)
 
-    def on_secret_query(self, verifier, service, question):
+    def on_secret_query(self, verifier, service, question, *_rest):
         log(f"pam secret-info-query [{service}]: {question}")
         if self.password is not None:
             verifier.call_answer_query(service, self.password, None, None, None)
@@ -366,11 +366,12 @@ class Wizard(Adw.Application):
         else:
             log("no password left to send")
 
-    def on_verification_failed(self, _v, service):
+    def on_verification_failed(self, _v, service, *_rest):
         log(f"verification failed [{service}]")
         self.handoff_failed("GDM could not verify the new account.")
 
-    def on_session_opened(self, greeter, service):
+    def on_session_opened(self, greeter, service, *_rest):
+        # GdmGreeter::session-opened carries (service_name, session_id).
         log(f"session opened [{service}]; asking GDM to start it")
         self.session_opened = True
         try:
