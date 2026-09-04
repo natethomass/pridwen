@@ -53,9 +53,14 @@ def man_options(cmd):
         return _man_cache[cmd]
     out = {}
     try:
-        env = dict(os.environ, MANWIDTH="200", MAN_KEEP_FORMATTING="0", PAGER="cat", MANPAGER="cat")
-        r = subprocess.run(["man", "--", cmd], capture_output=True, text=True, timeout=5, env=env)
-        lines = re.sub(r".\x08", "", r.stdout).splitlines()
+        # man-db treats any non-empty MAN_KEEP_FORMATTING as "keep", so drop it.
+        env = {k: v for k, v in os.environ.items() if k != "MAN_KEEP_FORMATTING"}
+        env.update(MANWIDTH="200", PAGER="cat", MANPAGER="cat", GROFF_NO_SGR="1")
+        r = subprocess.run(["man", "--", cmd], capture_output=True, text=True, timeout=8, env=env)
+        raw = re.sub(r".\x08", "", r.stdout)                 # overstrike bold/underline
+        raw = re.sub(r"\x1b\[[0-9;]*m", "", raw)             # SGR escapes
+        raw = raw.replace("‐", "-").replace("−", "-").replace("‑", "-")
+        lines = raw.splitlines()
     except (OSError, subprocess.SubprocessError):
         lines = []
     i = 0
