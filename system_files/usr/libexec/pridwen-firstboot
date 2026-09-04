@@ -9,26 +9,32 @@ hands the new account to GDM so the desktop appears without a login prompt.
 Choices are written to dconf in this session. GDM's copy worker carries
 ~/.config/dconf/user into the new user's home on first login, which is exactly
 how GNOME Initial Setup propagates its own settings.
+
+Every step logs to stderr (the journal). If the hand-off to GDM fails for any
+reason, the wizard says so on screen and offers to go to the login screen,
+which ends this session so GDM shows the greeter with the new account listed.
 """
 import os
 import pwd
 import re
 import subprocess
 import sys
+import time
 
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("AccountsService", "1.0")
 gi.require_version("Gdm", "1.0")
-gi.require_version("Gdk", "4.0")
 from gi.repository import AccountsService, Adw, Gdk, Gdm, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "org.pridwen.FirstBoot"
 SERVICE_NAME = "gdm-password"
 NIGHT_WALLPAPER = "/usr/share/backgrounds/pridwen/pridwen-night.png"
 MARK = "/usr/share/icons/hicolor/scalable/apps/pridwen.svg"
+HANDOFF_TIMEOUT_S = 25
 
 CSS = b"""
 window.pridwen {
@@ -48,6 +54,7 @@ window.pridwen {
 .pridwen-title { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; color: #ECE6DA; }
 .pridwen-lede  { font-size: 15px; color: #B5AD9F; }
 .pridwen-muted { color: #7E776C; font-size: 13px; }
+.pridwen-warn  { color: #E8985C; font-size: 13px; }
 .pridwen-primary {
   background-color: #F2EDE3; color: #24211D; border-radius: 99px;
   padding: 10px 26px; font-weight: 600;
@@ -64,19 +71,24 @@ window.pridwen {
 .pridwen-card row:selected, .pridwen-card row:hover { background-color: rgba(255,255,255,0.08); }
 .pridwen-card row .subtitle { color: #B5AD9F; }
 .pridwen-dots { color: #7E776C; }
-.pridwen-dots .on { color: #ECE6DA; }
 """ % NIGHT_WALLPAPER.encode()
 
 USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 RESERVED = {"root", "gdm", "gnome-initial-setup", "pridwen", "admin", "administrator"}
 
 
+def log(msg):
+    print(f"pridwen-firstboot: {msg}", file=sys.stderr, flush=True)
+
+
 def dconf_write(path, gvariant_text):
-    subprocess.run(["dconf", "write", path, gvariant_text], check=False)
+    r = subprocess.run(["dconf", "write", path, gvariant_text], capture_output=True, text=True)
+    log(f"dconf write {path} {gvariant_text} -> rc={r.returncode} {r.stderr.strip()}")
 
 
 def gsettings_set(schema, key, value):
-    subprocess.run(["gsettings", "set", schema, key, value], check=False)
+    r = subprocess.run(["gsettings", "set", schema, key, value], capture_output=True, text=True)
+    log(f"gsettings set {schema} {key} {value} -> rc={r.returncode} {r.stderr.strip()}")
 
 
 def suggest_username(fullname):
@@ -87,7 +99,7 @@ def suggest_username(fullname):
 class Page(Gtk.Box):
     """One wizard step: a glass card with a title, lede, body, and its own validity."""
 
-    def __init__(self, wizard, title, lede, primary="Continue", ghost=None):
+    def __init__(self, wizard, title, lede, primary="Continue"):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
         self.wizard = wizard
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, width_request=560)
@@ -107,13 +119,7 @@ class Page(Gtk.Box):
         self.back.add_css_class("pridwen-ghost")
         self.back.connect("clicked", lambda *_: wizard.go(-1))
         footer.append(self.back)
-        spacer = Gtk.Box(hexpand=True)
-        footer.append(spacer)
-        if ghost:
-            g = Gtk.Button(label=ghost)
-            g.add_css_class("pridwen-ghost")
-            g.connect("clicked", lambda *_: wizard.go(+1))
-            footer.append(g)
+        footer.append(Gtk.Box(hexpand=True))
         self.next = Gtk.Button(label=primary)
         self.next.add_css_class("pridwen-primary")
         self.next.connect("clicked", self.on_next)
@@ -210,7 +216,6 @@ class ChoicePage(Page):
         self.value = default
         group = Adw.PreferencesGroup()
         first = None
-        self.rows = []
         for value, label, subtitle in choices:
             row = Adw.ActionRow(title=label, subtitle=subtitle, activatable=True)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
@@ -223,7 +228,6 @@ class ChoicePage(Page):
             row.add_prefix(check)
             row.set_activatable_widget(check)
             group.add(row)
-            self.rows.append(row)
         self.body.append(group)
 
     def on_toggle(self, check, value):
@@ -233,7 +237,7 @@ class ChoicePage(Page):
 
 class GuidePage(Page):
     def __init__(self, wizard):
-        super().__init__(wizard, "The Guide", "An assistant that explains what you're looking at and never runs anything for you.", primary="Continue", ghost=None)
+        super().__init__(wizard, "The Guide", "An assistant that explains what you're looking at and never runs anything for you.")
         note = Gtk.Label(xalign=0, wrap=True, label="Connect it later from the Academy: paste an API key for a cloud model, or pick a local model to stay fully offline. Nothing is sent anywhere until you do.")
         note.add_css_class("pridwen-muted")
         self.body.append(note)
@@ -245,11 +249,20 @@ class PrivacyPage(Page):
         self.status = Gtk.Label(xalign=0, wrap=True, label="")
         self.status.add_css_class("pridwen-muted")
         self.body.append(self.status)
+        self.fallback = Gtk.Button(label="Go to the login screen", visible=False)
+        self.fallback.add_css_class("pridwen-ghost")
+        self.fallback.connect("clicked", lambda *_: self.wizard.quit_to_greeter("user chose login screen"))
+        self.body.append(self.fallback)
+
+    def set_status(self, text, warn=False):
+        self.status.set_text(text)
+        self.status.remove_css_class("pridwen-warn" if not warn else "pridwen-muted")
+        self.status.add_css_class("pridwen-warn" if warn else "pridwen-muted")
 
     def on_next(self, *_):
         self.next.set_sensitive(False)
         self.back.set_sensitive(False)
-        self.status.set_text("Creating your account…")
+        self.set_status("Creating your account…")
         self.wizard.finish(self)
 
 
@@ -258,17 +271,22 @@ class Wizard(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.pages = []
         self.index = 0
+        self.client = None
         self.greeter = None
         self.verifier = None
         self.password = None
+        self.page = None
+        self.handoff_started = None
+        self.session_opened = False
 
+    # ---- lifecycle ---------------------------------------------------------
     def do_startup(self):
         Adw.Application.do_startup(self)
+        log(f"starting as uid={os.getuid()} home={GLib.get_home_dir()}")
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         prov = Gtk.CssProvider()
         prov.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.connect_gdm()
 
     def do_activate(self):
@@ -311,54 +329,108 @@ class Wizard(Adw.Application):
     def go(self, delta):
         self.show(self.index + delta)
 
-    # ---- GDM handoff -------------------------------------------------------
+    def quit_to_greeter(self, why):
+        """End this session. gnome-initial-setup.service's ExecStopPost shuts the
+        session down and GDM shows the greeter, where the new user is listed."""
+        log(f"quitting to greeter: {why}")
+        self.quit()
+
+    # ---- GDM hand-off --------------------------------------------------------
     def connect_gdm(self):
         try:
-            client = Gdm.Client.new()
-            self.greeter = client.get_greeter_sync(None)
-            self.verifier = client.get_user_verifier_sync(None)
+            self.client = Gdm.Client()
+            self.greeter = self.client.get_greeter_sync(None)
+            self.verifier = self.client.get_user_verifier_sync(None)
         except Exception as e:  # noqa: BLE001
-            print(f"pridwen-firstboot: no GDM connection ({e}); will finish without auto-login", file=sys.stderr)
+            log(f"no GDM greeter connection ({e}); will fall back to the login screen after setup")
             self.greeter = self.verifier = None
             return
-        self.verifier.connect("secret-info-query", self.on_secret_query)
-        self.verifier.connect("problem", lambda v, s, p: print(f"PAM problem: {p}", file=sys.stderr))
+        log("connected to GDM greeter and user verifier")
+        v = self.verifier
+        v.connect("info", lambda _v, s, m: log(f"pam info [{s}]: {m}"))
+        v.connect("problem", lambda _v, s, m: log(f"pam problem [{s}]: {m}"))
+        v.connect("info-query", lambda _v, s, q: log(f"pam info-query [{s}]: {q} (unanswered)"))
+        v.connect("secret-info-query", self.on_secret_query)
+        v.connect("verification-complete", lambda _v, s: log(f"verification complete [{s}]"))
+        v.connect("verification-failed", self.on_verification_failed)
+        v.connect("conversation-stopped", lambda _v, s: log(f"conversation stopped [{s}]"))
+        v.connect("service-unavailable", lambda _v, s, m: log(f"service unavailable [{s}]: {m}"))
         self.greeter.connect("session-opened", self.on_session_opened)
 
     def on_secret_query(self, verifier, service, question):
+        log(f"pam secret-info-query [{service}]: {question}")
         if self.password is not None:
             verifier.call_answer_query(service, self.password, None, None, None)
             self.password = None
+            log("answered secret query")
+        else:
+            log("no password left to send")
+
+    def on_verification_failed(self, _v, service):
+        log(f"verification failed [{service}]")
+        self.handoff_failed("GDM could not verify the new account.")
 
     def on_session_opened(self, greeter, service):
-        greeter.call_start_session_when_ready_sync(service, True, None)
+        log(f"session opened [{service}]; asking GDM to start it")
+        self.session_opened = True
+        try:
+            greeter.call_start_session_when_ready_sync(service, True, None)
+            log("start_session_when_ready sent")
+            if self.page:
+                self.page.set_status("Opening your desktop…")
+        except GLib.Error as e:
+            log(f"start_session_when_ready failed: {e.message}")
+            self.handoff_failed("GDM did not start the session.")
 
-    # ---- finish ------------------------------------------------------------
+    def handoff_failed(self, why):
+        if self.page is None:
+            return
+        self.page.set_status(f"{why} Your account is ready; sign in from the login screen.", warn=True)
+        self.page.fallback.set_visible(True)
+        win = self.get_active_window()
+        if win:
+            win.set_visible(True)
+
+    def handoff_watchdog(self):
+        if self.session_opened:
+            return False
+        log(f"no session after {HANDOFF_TIMEOUT_S}s")
+        self.handoff_failed("The desktop did not start in time.")
+        return False
+
+    # ---- finish --------------------------------------------------------------
     def finish(self, page):
         self.page = page
         username = self.account.username.get_text()
         fullname = self.account.fullname.get_text().strip()
         self.password = self.account.password.get_text()
         mgr = AccountsService.UserManager.get_default()
+        log(f"creating user {username!r} ({fullname!r}); manager loaded={mgr.props.is_loaded}")
 
-        def create():
+        def create(*_):
+            if not mgr.props.is_loaded:
+                return
+            mgr.disconnect_by_func(create) if _ else None
             mgr.create_user_async(username, fullname, AccountsService.UserAccountType.ADMINISTRATOR, None, self.on_created, None)
 
         if mgr.props.is_loaded:
             create()
         else:
-            mgr.connect("notify::is-loaded", lambda *_: create() if mgr.props.is_loaded else None)
+            mgr.connect("notify::is-loaded", create)
 
     def on_created(self, mgr, res, _data):
         try:
             user = mgr.create_user_finish(res)
         except GLib.Error as e:
-            self.page.status.set_text(f"Could not create the account: {e.message}")
+            log(f"create_user failed: {e.message}")
+            self.page.set_status(f"Could not create the account: {e.message}", warn=True)
             self.page.next.set_sensitive(True)
             self.page.back.set_sensitive(True)
             return
+        log(f"user created uid={user.get_uid()} name={user.get_user_name()}")
         user.set_password(self.password, "")
         user.set_password_mode(AccountsService.UserPasswordMode.REGULAR)
+        log("password set")
         uid = user.get_uid()
 
         # Choices, into this session's dconf: the copy worker carries them over.
@@ -368,26 +440,34 @@ class Wizard(Adw.Application):
         gsettings_set("org.gnome.desktop.interface", "color-scheme", scheme)
 
         home = GLib.get_home_dir()
-        os.makedirs(os.path.join(home, ".config"), exist_ok=True)
-        with open(os.path.join(home, ".config", "gnome-initial-setup-done"), "w") as f:
-            f.write("yes\n")
-        with open(os.path.join(home, "gnome-initial-setup-uid"), "w") as f:
-            f.write(f"{uid}")
+        try:
+            os.makedirs(os.path.join(home, ".config"), exist_ok=True)
+            with open(os.path.join(home, ".config", "gnome-initial-setup-done"), "w") as f:
+                f.write("yes\n")
+            with open(os.path.join(home, "gnome-initial-setup-uid"), "w") as f:
+                f.write(f"{uid}")
+            log("wrote gnome-initial-setup-done and gnome-initial-setup-uid")
+        except OSError as e:
+            log(f"could not write hand-off files in {home}: {e}")
 
-        self.page.status.set_text("Account ready. Opening your desktop…")
+        self.page.set_status("Account ready. Opening your desktop…")
         GLib.timeout_add(600, self.log_in, user.get_user_name())
 
     def log_in(self, username):
         if self.verifier is None or self.greeter is None:
-            self.page.status.set_text("Account created. Log in from the greeter.")
-            GLib.timeout_add(1500, lambda: (self.quit(), False)[1])
+            log("no GDM connection; going to the login screen")
+            self.page.set_status("Account created. Taking you to the login screen…")
+            GLib.timeout_add(1500, lambda: (self.quit_to_greeter("no gdm connection"), False)[1])
             return False
-        self.get_active_window().set_visible(False)
+        self.handoff_started = time.monotonic()
         try:
             self.verifier.call_begin_verification_for_user_sync(SERVICE_NAME, username, None)
+            log(f"begin_verification_for_user({SERVICE_NAME}, {username}) sent")
         except GLib.Error as e:
-            print(f"pridwen-firstboot: begin verification failed: {e.message}", file=sys.stderr)
-            self.quit()
+            log(f"begin_verification_for_user failed: {e.message}")
+            self.handoff_failed("GDM refused to start verification.")
+            return False
+        GLib.timeout_add_seconds(HANDOFF_TIMEOUT_S, self.handoff_watchdog)
         return False
 
 

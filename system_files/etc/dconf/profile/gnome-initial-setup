@@ -1,0 +1,6 @@
+# dconf profile for GDM's initial-setup session (the one the Pridwen welcome wizard
+# runs in). Same as GNOME's default, plus the Pridwen distro defaults so the shell
+# behind the wizard wears our wallpaper instead of Fedora's.
+user-db:user
+system-db:distro
+file-db:/usr/share/gnome-initial-setup/initial-setup-dconf-defaults

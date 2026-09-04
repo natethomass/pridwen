@@ -1,0 +1,21 @@
+/* Pridwen OS installer look. Dropped in by the kickstart %pre; see scripts/gen-installer-branding.py. */
+@define-color anaconda_bg_color #111318;
+.logo-sidebar {
+    background-image: url('/run/install/product/pixmaps/sidebar-bg.png');
+    background-color: #111318;
+    background-repeat: no-repeat;
+    background-position: top left;
+}
+.logo {
+    background-image: url('/run/install/product/pixmaps/sidebar-logo.png');
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: 50% 0px;
+}
+.product-logo { background-image: none; }
+AnacondaSpokeWindow #nav-box {
+    background-color: #111318;
+    background-image: none;
+    color: #F2EDE3;
+}
+AnacondaSpokeWindow #nav-box label { color: #F2EDE3; }
