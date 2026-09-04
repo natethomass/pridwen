@@ -78,7 +78,13 @@ Operational notes (keep):
   `cosign verify --key cosign.pub --insecure-ignore-tlog=true ghcr.io/natethomass/pridwen:latest`.
 - GHCR package is public (inherited from the public repo).
 - Disk images: `gh workflow run build-disk.yml -f platform=amd64`, ~15 min, artifacts
-  ~3-4 GiB each, 14-day retention, no checksum file in the artifact.
+  ~3-4 GiB each, 14-day retention, no checksum file in the artifact. An ISO is a snapshot
+  of `:latest` at build time, so the order is always push → container build green → disk
+  build. The plan job refuses to build unless the image's
+  `org.opencontainers.image.revision` label equals HEAD (`-f allow-stale=true` bypasses).
+- Anaconda writes its own `/etc/hostname` ("fedora") and that local edit survives every
+  `bootc upgrade` (3-way /etc merge keeps local changes), so the kickstart `%post` sets it.
+  Systems installed from an older ISO need a one-time `sudo hostnamectl hostname pridwen`.
 - Test VM: VirtualBox 7.2 "Pridwen M0" at `C:\Users\natet\VMs\Pridwen M0\` (EFI, 4 GB,
   2 CPU, 40 GB VDI, VMSVGA). ISO at `C:\Users\natet\VMs\pridwen\pridwen-0.1.0-m0-amd64.iso`.
   Host has Hyper-V active so VirtualBox uses its slower backend; acceptable.

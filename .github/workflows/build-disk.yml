@@ -5,6 +5,7 @@ name: Build disk images
 #   qcow2         pre-installed disk for Proxmox / libvirt
 #   vmdk          pre-installed disk for VirtualBox
 # Run manually from the Actions tab after a container build has pushed :latest.
+# The plan job checks that :latest carries this commit's revision label first.
 
 on:
   workflow_dispatch:
@@ -22,6 +23,11 @@ on:
         required: false
         default: "anaconda-iso qcow2 vmdk"
         type: string
+      allow-stale:
+        description: "Build even if :latest was not built from this commit"
+        required: false
+        default: false
+        type: boolean
 
 env:
   IMAGE_NAME: pridwen
@@ -40,6 +46,21 @@ jobs:
     outputs:
       types: ${{ steps.plan.outputs.types }}
     steps:
+      # A disk image is a snapshot of :latest at build time. Refuse to bake an ISO
+      # from an image that predates this commit (container build still running, or
+      # never triggered) so installer media never lags the repo silently.
+      - name: Check that :latest was built from this commit
+        if: ${{ !inputs.allow-stale }}
+        run: |
+          ref="docker://${IMAGE_REGISTRY,,}/${IMAGE_NAME,,}:${DEFAULT_TAG}"
+          built_from=$(skopeo inspect --override-os linux "${ref}" | jq -r '.Labels["org.opencontainers.image.revision"] // empty')
+          echo "repo HEAD:   ${GITHUB_SHA}"
+          echo "image built: ${built_from:-<no revision label>}"
+          if [[ "${built_from}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::${ref} was not built from ${GITHUB_SHA}. Wait for the container build to go green, or re-run with allow-stale=true."
+            exit 1
+          fi
+
       - id: plan
         run: |
           types='${{ inputs.types }}'
