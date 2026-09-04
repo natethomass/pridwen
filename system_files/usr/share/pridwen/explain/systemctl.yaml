@@ -10,3 +10,18 @@ flags:
   --user: Act on the calling user's own manager rather than the system one.
   --failed: List units that have failed.
   daemon-reload: Reload unit files after editing one by hand.
+  restart: Stop then start a unit; the way to pick up a changed config.
+  reload: Ask a running unit to re-read its config without restarting, if it supports that.
+  disable: Stop a unit from starting at boot; add --now to also stop it.
+  mask: Link a unit to /dev/null so nothing can start it, not even a dependency.
+  unmask: Undo mask.
+  cat: Print the unit file and its drop-ins, with the paths they came from.
+  edit: Create a drop-in override for a unit in /etc/systemd/system.
+  is-active: Exit 0 if the unit is running; handy in scripts.
+  is-enabled: Report whether the unit starts at boot.
+  list-units: List loaded units; add --type=service or --state=failed to narrow it.
+  list-timers: Show timers, when they last ran, and when they fire next.
+  --now: Also start (with enable) or stop (with disable) the unit immediately.
+  --no-pager: Print straight to the terminal instead of through less.
+  --type: Only units of one type, e.g. service, timer, socket.
+  --state: Only units in one state, e.g. failed, running.

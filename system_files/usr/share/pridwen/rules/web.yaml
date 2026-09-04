@@ -16,7 +16,7 @@
   node: web
   lesson: web-02
   when:
-    command: '(\.\./){2,}|%2e%2e%2f|/etc/passwd'
+    command: '^(curl|wget|http|https?://)\b.*((\.\./){2,}|%2e%2e%2f|(\?|&)[^ ]*=[^ ]*/etc/passwd)'
     exit: any
   hint: >-
     That path-traversal shape belongs in a lab, aimed at a Range target you own. As a defender, the same string in an access log is the signature to alert on.
