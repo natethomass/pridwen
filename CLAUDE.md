@@ -85,6 +85,16 @@ Operational notes (keep):
 - Anaconda writes its own `/etc/hostname` ("fedora") and that local edit survives every
   `bootc upgrade` (3-way /etc merge keeps local changes), so the kickstart `%post` sets it.
   Systems installed from an older ISO need a one-time `sudo hostnamectl hostname pridwen`.
+- Installer look: the Anaconda boot image is Fedora's, not ours, so branding is dropped in
+  by a kickstart `%pre` written by `scripts/gen-installer-branding.py` (pixmaps + CSS at
+  `/run/install/product/`, which Anaconda loads above its own stylesheet). The `%pre` is
+  Python because the installer image has no `base64` binary. Kickstart text sits in a TOML
+  basic string: no backslashes, no triple double-quotes. The summary hub header is `#nav-box`
+  (Anaconda's rule only targets AnacondaSpokeWindow). Anaconda's tty2 shell is reachable with
+  Ctrl+Alt+F2 sent via `VBoxManage controlvm ... keyboardputscancode 1d 38 3c bc b8 9d`.
+- build.yml ignores `disk_config/**`, `scripts/**` and `build-disk.yml`; only Containerfile,
+  Justfile, build_files, system_files and build.yml rebuild the image. Rechunking drops OCI
+  labels, so the Justfile re-applies them (metadata-only build) after `ostree-rechunk`.
 - Test VM: VirtualBox 7.2 "Pridwen M0" at `C:\Users\natet\VMs\Pridwen M0\` (EFI, 4 GB,
   2 CPU, 40 GB VDI, VMSVGA). ISO at `C:\Users\natet\VMs\pridwen\pridwen-0.1.0-m0-amd64.iso`.
   Host has Hyper-V active so VirtualBox uses its slower backend; acceptable.
