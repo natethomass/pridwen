@@ -114,6 +114,17 @@ the VM, look. Slice 4 needs a fresh install (new ISO) because it only runs when 
    `/org/pridwen/look/mode`), writes `~/.config/gnome-initial-setup-done` and
    `~/gnome-initial-setup-uid`, then logs in through libgdm (`gdm-password`).
 
+Verified in the M0 VM after `bootc upgrade` to the slice 1-4 image (2026-09-04): Plymouth
+theme renders in VirtualBox (mark, rail, narration line); cream wallpaper, weekday clock,
+favourites all present; greeter got dark scheme, logo, pill entry but NOT the night wallpaper
+or the frosted card. Fixed in 45958ab: St resolves a bare path in `url()` relative to the
+stylesheet inside the gresource, so use `url("file:///...")`; and the user-card rule needs the
+stock three-class selector chain to win. Also removed Fedora's corner watermark extension
+(`gnome-shell-extension-background-logo`) in 9d25995. Pending re-verification.
+
+Two VMs now: "Pridwen M0" (installed from the M0 ISO, upgraded since) and "Pridwen M1"
+(fresh, for the wizard test). ISOs in `C:\Users\natet\VMs\pridwen\`.
+
 Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
 keyboard pages in the wizard; Guide connection page is informational only until M5; the
 mark is a placeholder pending the owner's sign-off; VirtualBox has no guest additions.
