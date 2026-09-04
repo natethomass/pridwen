@@ -126,7 +126,7 @@ favourites all present; greeter got dark scheme, logo, pill entry but NOT the ni
 or the frosted card. Fixed in 45958ab: St resolves a bare path in `url()` relative to the
 stylesheet inside the gresource, so use `url("file:///...")`; and the user-card rule needs the
 stock three-class selector chain to win. Also removed Fedora's corner watermark extension
-(`gnome-shell-extension-background-logo`) in 9d25995. Pending re-verification.
+(`gnome-shell-extension-background-logo`) in 9d25995. Both verified after the next upgrade.
 
 Two VMs now: "Pridwen M0" (installed from the M0 ISO, upgraded since) and "Pridwen M1"
 (fresh, for the wizard test). ISOs in `C:\Users\natet\VMs\pridwen\`.
@@ -138,6 +138,10 @@ signal handlers now take *rest. The wizard also got a failure path (status + "Go
 login screen"), a 25 s watchdog, and journal logging. To re-run the wizard on an installed
 system without reinstalling: `sudo rpm-ostree kargs --append=gnome.initial-setup=1`, reboot
 (GDM forces initial setup from the kernel cmdline); remove the karg afterwards.
+
+Wizard re-test on "Pridwen M1" after `bootc upgrade` to 470f694 (2026-09-04): second user
+created, PAM session opened, landed on the desktop with no watermark. Slice 4 verified.
+Remaining: fresh install from the branded ISO (installer look + hostname `pridwen`).
 
 Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
 keyboard pages in the wizard; Guide connection page is informational only until M5; VirtualBox has no guest additions.
