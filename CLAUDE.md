@@ -179,7 +179,11 @@ touching rules or the daemon. Slices:
    `why` rendered a rule's why text and translated a real AVC (bootupd -> systemd-homed;
    now gated so unrelated denials are only mentioned), `quiet 1h/off` works, daemon runs at
    ~19 MB. Found and fixed a false positive (web-traversal fired on `cd /etc/passwd`).
-   Still to exercise: the ten-sudo nudge (needs the owner's password), notification actions.
+   The ten-sudo nudge did not appear: installs land on UTC (the wizard had no timezone page)
+   so 22:xx fell inside the default quiet hours, and a held nudge was never retried. Fixed in
+   1cfc4a0 (retry until sent, `pridwen quiet hours`, `pridwen dispatch test`, wizard Timezone
+   page, automatic-timezone dconf). Version 0.3.0-m2. Re-test: `pridwen quiet hours off`,
+   then one more `sudo true`; notification actions (Learn opens a terminal lesson).
 
 Decisions: bash stays the default login shell (zsh hook shipped too); rules match the
 command with a leading sudo stripped (`not_sudo` distinguishes); output is never captured,
