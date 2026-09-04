@@ -61,35 +61,33 @@ https://claude.ai/code/artifact/fde7ace6-f138-4e68-82a7-7d6aa6f2823c
 | M6 Posture | Baseline as data, defaults applied at build, drift detection, lesson per control | Fresh install passes its own posture check |
 | M7 Release | Docs site, install guide, releases, partial Linux+/Sec+ tracks | Public 1.0 |
 
-## M0 status (as of 2026-09-04, afternoon)
+## M0 status: DONE (2026-09-04)
 
-Steps 1-6 are done and verified. Only the boot test (step 7) remains.
+Verified end to end in VirtualBox: ISO installs (LUKS, no user), gnome-initial-setup creates
+the user, `bootc status` shows `ghcr.io/natethomass/pridwen:latest`, and after a version
+bump push + CI, `sudo bootc upgrade` + reboot moved PRETTY_NAME from 0.1.0-m0 to 0.1.1-m0
+with the old image kept as rollback. Next milestone: M1 Look.
 
-- Tooling: gh 2.100.0 and cosign 3.1.3 installed via winget. cosign is NOT on PATH; run it as
+Operational notes (keep):
+- Tooling: gh 2.100.0 and cosign 3.1.3 via winget. cosign is NOT on PATH; run it as
   `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Sigstore.Cosign_Microsoft.Winget.Source_8wekyb3d8bbwe\cosign-windows-amd64.exe`.
-  gh is logged in (scopes: repo, workflow, read:org, gist; no read:packages, so `gh api` on
-  packages returns 403; query ghcr.io anonymously instead). Run gh from inside the repo or
-  pass `-R natethomass/pridwen`.
-- Repo: https://github.com/natethomass/pridwen (public). `git push` triggers the build.
-- Container build: green. ~12-14 min per run. Image at `ghcr.io/natethomass/pridwen:latest`,
-  public (inherited from the public repo; no visibility change was needed).
-- Signing: `SIGNING_SECRET` set. Images are signed; verified locally with
+  gh scopes: repo, workflow, read:org, gist (no read:packages, so `gh api` on packages 403s;
+  query ghcr.io anonymously). Run gh inside the repo or pass `-R natethomass/pridwen`.
+- Container build: ~11-14 min, triggered by any push except README/docs/CLAUDE.md/LICENSE/
+  .vscode/.claude. Workflow file changes always trigger. Images are signed; verify with
   `cosign verify --key cosign.pub --insecure-ignore-tlog=true ghcr.io/natethomass/pridwen:latest`.
-- Disk images: "Build disk images" (amd64) green for anaconda-iso, qcow2, vmdk. ~15 min.
-  Artifacts are ~3-4 GiB each, 14-day retention. ISO downloaded to `C:\Users\natet\VMs\pridwen\`.
-
-Fixes made along the way (both committed):
-- `sigstore/cosign-installer` has no floating `v4` tag; pinned to `v4.1.2`.
-- silverblue-main declares no default root filesystem, so bootc-image-builder refused every
-  disk type. Fixed twice over: `system_files/usr/lib/bootc/install/50-pridwen.toml` sets
-  btrfs in the image, and `build-disk.yml` passes `rootfs: btrfs` to the action.
-- The bootc-image-builder-action input names were checked against its action.yml: all match.
-
-Remaining for M0 (step 7): VirtualBox is not installed on this host (Hyper-V is active, so
-VirtualBox will use the slower Hyper-V backend). Install it, boot the ISO (EFI on, 4 GB,
-2 CPU, 40 GB disk), install with "Encrypt my data", create the user on first boot, run
-`sudo bootc status`. Then push a trivial change, wait for CI, `sudo bootc upgrade` in the
-VM. That closes M0.
+- GHCR package is public (inherited from the public repo).
+- Disk images: `gh workflow run build-disk.yml -f platform=amd64`, ~15 min, artifacts
+  ~3-4 GiB each, 14-day retention, no checksum file in the artifact.
+- Test VM: VirtualBox 7.2 "Pridwen M0" at `C:\Users\natet\VMs\Pridwen M0\` (EFI, 4 GB,
+  2 CPU, 40 GB VDI, VMSVGA). ISO at `C:\Users\natet\VMs\pridwen\pridwen-0.1.0-m0-amd64.iso`.
+  Host has Hyper-V active so VirtualBox uses its slower backend; acceptable.
+- Fixes that were needed: `sigstore/cosign-installer` has no floating `v4` tag (pinned
+  v4.1.2); silverblue-main declares no default root filesystem, so
+  `system_files/usr/lib/bootc/install/50-pridwen.toml` sets btrfs and `build-disk.yml`
+  passes `rootfs: btrfs`.
+- Known M0 leftovers for M1: hostname is still "fedora"; desktop is stock Fedora wallpaper
+  and branding; VirtualBox guest additions not installed (no shared clipboard).
 
 ## Useful references
 
