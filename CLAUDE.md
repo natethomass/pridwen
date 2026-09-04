@@ -61,32 +61,35 @@ https://claude.ai/code/artifact/fde7ace6-f138-4e68-82a7-7d6aa6f2823c
 | M6 Posture | Baseline as data, defaults applied at build, drift detection, lesson per control | Fresh install passes its own posture check |
 | M7 Release | Docs site, install guide, releases, partial Linux+/Sec+ tracks | Public 1.0 |
 
-## M0 status (as of 2026-09-04)
+## M0 status (as of 2026-09-04, afternoon)
 
-Done locally: repo, Containerfile, build.sh, both workflows, disk configs, Justfile, README,
-cosign key pair generated (`scripts/gen-cosign-key.py`, verified round-trip).
+Steps 1-6 are done and verified. Only the boot test (step 7) remains.
 
-**Not done, blocked in the previous (non-interactive) session.** These need interactive
-approval, so do them here first, in order:
+- Tooling: gh 2.100.0 and cosign 3.1.3 installed via winget. cosign is NOT on PATH; run it as
+  `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Sigstore.Cosign_Microsoft.Winget.Source_8wekyb3d8bbwe\cosign-windows-amd64.exe`.
+  gh is logged in (scopes: repo, workflow, read:org, gist; no read:packages, so `gh api` on
+  packages returns 403; query ghcr.io anonymously instead). Run gh from inside the repo or
+  pass `-R natethomass/pridwen`.
+- Repo: https://github.com/natethomass/pridwen (public). `git push` triggers the build.
+- Container build: green. ~12-14 min per run. Image at `ghcr.io/natethomass/pridwen:latest`,
+  public (inherited from the public repo; no visibility change was needed).
+- Signing: `SIGNING_SECRET` set. Images are signed; verified locally with
+  `cosign verify --key cosign.pub --insecure-ignore-tlog=true ghcr.io/natethomass/pridwen:latest`.
+- Disk images: "Build disk images" (amd64) green for anaconda-iso, qcow2, vmdk. ~15 min.
+  Artifacts are ~3-4 GiB each, 14-day retention. ISO downloaded to `C:\Users\natet\VMs\pridwen\`.
 
-1. Install tooling if missing: `winget install GitHub.cli` and `winget install Sigstore.Cosign`.
-   Then `gh auth login` (the owner does this in the terminal; browser flow).
-2. Create the repo and push: `gh repo create natethomass/pridwen --public --source . --push`
-   (remote `origin` is already set to https://github.com/natethomass/pridwen.git).
-3. Watch the first "Build container image" run: `gh run watch`. Fix anything red.
-4. Make the GHCR package public (web UI: Packages → pridwen → Package settings → Change
-   visibility). Required for installs and for the disk-image workflow to pull.
-5. Set the signing secret: `gh secret set SIGNING_SECRET < cosign.key`. Re-run the build so
-   the image is signed.
-6. Run "Build disk images": `gh workflow run build-disk.yml -f platform=amd64`, then download
-   the artifacts: `gh run download -n pridwen-anaconda-iso-amd64`.
-7. Boot the ISO in VirtualBox (EFI on, 4 GB, 2 CPU), install, create the user on first boot,
-   run `sudo bootc status`. Then push a trivial change, wait for CI, `sudo bootc upgrade` in
-   the VM. That closes M0.
+Fixes made along the way (both committed):
+- `sigstore/cosign-installer` has no floating `v4` tag; pinned to `v4.1.2`.
+- silverblue-main declares no default root filesystem, so bootc-image-builder refused every
+  disk type. Fixed twice over: `system_files/usr/lib/bootc/install/50-pridwen.toml` sets
+  btrfs in the image, and `build-disk.yml` passes `rootfs: btrfs` to the action.
+- The bootc-image-builder-action input names were checked against its action.yml: all match.
 
-Known unverified: the workflow YAML was checked by eye only (no PyYAML on the host). The
-bootc-image-builder action's exact input names came from the ublue image-template as of
-2026-09; if it errors, fetch its README and adjust.
+Remaining for M0 (step 7): VirtualBox is not installed on this host (Hyper-V is active, so
+VirtualBox will use the slower Hyper-V backend). Install it, boot the ISO (EFI on, 4 GB,
+2 CPU, 40 GB disk), install with "Encrypt my data", create the user on first boot, run
+`sudo bootc status`. Then push a trivial change, wait for CI, `sudo bootc upgrade` in the
+VM. That closes M0.
 
 ## Useful references
 

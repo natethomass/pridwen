@@ -11,6 +11,10 @@ on:
     paths-ignore:
       - '**/README.md'
       - 'docs/**'
+      - 'CLAUDE.md'
+      - 'LICENSE'
+      - '.vscode/**'
+      - '.claude/**'
   workflow_dispatch:
 
 env:
