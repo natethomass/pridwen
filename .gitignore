@@ -17,3 +17,6 @@ output.env
 .idea/
 Thumbs.db
 .DS_Store
+
+# Python
+__pycache__/

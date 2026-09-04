@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="16" height="16">
+  <path fill="currentColor" fill-rule="evenodd" d="M64 12 C 82 12 98 15.5 108 20 V 58 C 108 86 90 106 64 118 C 38 106 20 86 20 58 V 20 C 30 15.5 46 12 64 12 Z M64 44 L 36 70 L 36 84 L 64 58 L 92 84 L 92 70 Z"/>
+</svg>

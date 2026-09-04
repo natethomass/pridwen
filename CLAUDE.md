@@ -96,7 +96,7 @@ the VM, look. Slice 4 needs a fresh install (new ISO) because it only runs when 
 
 1. **Look basics** (7e22e82): Cream Glass wallpapers rendered by `scripts/gen-wallpapers.py`
    from the mode.ts tokens; dconf distro defaults (`system_files/etc/dconf/db/distro.d`);
-   hostname `pridwen`; placeholder shield mark as os-release LOGO. Version 0.2.0-m1.
+   hostname `pridwen`; shield mark as os-release LOGO. Version 0.2.0-m1.
 2. **Boot and sun** (24e13d5): Plymouth script theme `pridwen` (assets from
    `scripts/gen-plymouth-assets.py`), initramfs regenerated with dracut at build,
    three `pridwen-narrate-*` units send plain-English lines via `plymouth display-message`,
@@ -126,8 +126,16 @@ Two VMs now: "Pridwen M0" (installed from the M0 ISO, upgraded since) and "Pridw
 (fresh, for the wizard test). ISOs in `C:\Users\natet\VMs\pridwen\`.
 
 Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
-keyboard pages in the wizard; Guide connection page is informational only until M5; the
-mark is a placeholder pending the owner's sign-off; VirtualBox has no guest additions.
+keyboard pages in the wizard; Guide connection page is informational only until M5; VirtualBox has no guest additions.
+
+## The mark
+
+The Pridwen mark is "Chief": a heater shield with a chevron cut out, chosen by the owner on
+2026-09-04 from five candidates (https://claude.ai/code/artifact/0ba21e5d-7680-4f56-8998-4f7e94f60adb).
+`scripts/pridwen_mark.py` is the single source of the geometry and writes the hicolor icons
+(`pridwen.svg` = cream mark on a night tile, `pridwen-symbolic.svg` = currentColor mark).
+`scripts/gen-plymouth-assets.py` imports it for the boot frames and the GDM login logo.
+Never redraw the shield by hand anywhere else.
 
 ## Useful references
 

@@ -4,6 +4,7 @@
 Plymouth script themes can only show bitmaps, so the mark's "draw in" is a
 sequence of frames: the shield revealed top to bottom with a soft edge.
 Colours: cream on the night canvas (the boot screen is always night).
+The mark itself comes from scripts/pridwen_mark.py.
 
 Usage: python scripts/gen-plymouth-assets.py [outdir]
 Writes into system_files/usr/share/plymouth/themes/pridwen/ by default.
@@ -15,41 +16,18 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-CREAM = (242, 237, 227)
-SLATE = (95, 126, 155)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pridwen_mark import CREAM, render_mark  # noqa: E402
+
 SS = 4  # supersampling for clean edges
 MARK = 192  # mark box in px
 FRAMES = 24
 
-# Same geometry as the SVG mark (128-unit box), scaled to MARK px.
-def P(x, y):
-    return (x / 128 * MARK * SS, y / 128 * MARK * SS)
-
-
-SHIELD = [P(64, 8), P(108, 22), P(108, 60), P(90, 108), P(64, 120), P(38, 108), P(20, 60), P(20, 22)]
-CHEVRON = [P(34, 66), P(64, 40), P(94, 66), P(94, 80), P(64, 54), P(34, 80)]
-KEEL = [P(58, 84), P(70, 84), P(70, 102), P(64, 108), P(58, 102)]
-
 
 def shield_outline_mask():
-    """Cream shield outline (stroke only) plus chevron and keel, as an RGBA image."""
-    big = MARK * SS
-    im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    # Outline: draw filled shield, then subtract an inset shield.
-    outer = Image.new("L", (big, big), 0)
-    ImageDraw.Draw(outer).polygon(SHIELD, fill=255)
-    inset = outer.filter(ImageFilter.MinFilter(int(4.5 * SS) | 1))
-    ring = np.asarray(outer).astype(np.int16) - np.asarray(inset).astype(np.int16)
-    ring = np.clip(ring, 0, 255).astype(np.uint8)
-    rgba = np.zeros((big, big, 4), np.uint8)
-    rgba[..., :3] = CREAM
-    rgba[..., 3] = ring
-    im = Image.fromarray(rgba, "RGBA")
-    d = ImageDraw.Draw(im)
-    d.polygon(CHEVRON, fill=CREAM + (255,))
-    d.polygon(KEEL, fill=SLATE + (255,))
-    return im
+    """The Chief mark in cream, oversampled; reveal() and down() work on this."""
+    return render_mark(MARK * SS, CREAM, ss=1)
 
 
 def reveal(im, t):
