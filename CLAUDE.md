@@ -105,7 +105,7 @@ Operational notes (keep):
 - Known M0 leftovers for M1: hostname is still "fedora"; desktop is stock Fedora wallpaper
   and branding; VirtualBox guest additions not installed (no shared clipboard).
 
-## M1 status (2026-09-04, in progress)
+## M1 status: VERIFIED (2026-09-04)
 
 Four slices, each a commit on main. Verify the same way as M0: CI green, `bootc upgrade` in
 the VM, look. Slice 4 needs a fresh install (new ISO) because it only runs when no user exists.
@@ -151,10 +151,16 @@ system without reinstalling: `sudo rpm-ostree kargs --append=gnome.initial-setup
 
 Wizard re-test on "Pridwen M1" after `bootc upgrade` to 470f694 (2026-09-04): second user
 created, PAM session opened, landed on the desktop with no watermark. Slice 4 verified.
-Remaining: fresh install from the branded ISO (installer look + hostname `pridwen`).
+Fresh install from `pridwen-0.2.0-m1c-amd64.iso` (run 33915470966, image d6c123f) in VM
+"Pridwen M1 fresh" (2026-09-04): branded Anaconda (night sidebar gradient, Chief mark, night
+header, "PRIDWEN OS 43 INSTALLATION"), Plymouth narration, wizard, desktop, prompt
+`user@pridwen`, no watermark. Only polish left in the installer: the keyboard-layout badge
+label was cream on white; fixed in 6253b15, lands in the next ISO.
 
-Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
-keyboard pages in the wizard; Guide connection page is informational only until M5; VirtualBox has no guest additions.
+Known gaps for later (not blocking M2): Shell top-bar styling (needs user-theme extension);
+language and keyboard pages in the wizard; Guide connection page is informational only until
+M5; VirtualBox guest additions; Anaconda's blue progress bar and buttons are GTK Adwaita
+literals, not themable from the product CSS. The "recording worth posting" is the owner's call.
 
 ## The mark
 

@@ -9,7 +9,7 @@ GitHub Actions, pushed to `ghcr.io/natethomass/pridwen`, and turned into install
 [bootc-image-builder](https://osbuild.org/docs/bootc/). Installed machines update from the
 registry with `bootc upgrade`. This is the [Universal Blue](https://universal-blue.org) pattern.
 
-> Status: **M0 done, M1 Look in progress.** The image builds, signs, publishes, installs from
+> Status: **M0 done, M1 Look verified, M2 Coach next.** The image builds, signs, publishes, installs from
 > its ISO, and upgrades with `bootc upgrade`. M1 is adding the Pridwen look: wallpapers and
 > GNOME defaults first, then Plymouth, GDM, and the first-boot wizard. Roadmap at the bottom.
 
