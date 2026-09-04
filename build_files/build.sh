@@ -21,7 +21,8 @@ dnf5 install -y \
     fastfetch \
     plymouth-plugin-script \
     plymouth-plugin-label \
-    darkman
+    darkman \
+    python3-gobject
 
 ### 3. Identity
 # Keep ID=fedora: tooling keys on it. Brand everything else.
@@ -76,6 +77,12 @@ export DRACUT_NO_XATTR=1
 dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v --add ostree \
     -f "/usr/lib/modules/${KVER}/initramfs.img"
 chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
+
+# First boot: the Pridwen wizard runs inside GDM's initial-setup session instead of
+# GNOME Initial Setup (drop-in on gnome-initial-setup.service). The existing-user
+# first-login pass is not wanted.
+chmod 0755 /usr/libexec/pridwen-firstboot
+systemctl --global mask gnome-initial-setup-first-login.service
 
 # Narrated boot lines and the day/night switcher.
 systemctl enable pridwen-narrate-disks.service pridwen-narrate-network.service pridwen-narrate-desktop.service

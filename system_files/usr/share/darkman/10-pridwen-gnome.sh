@@ -5,6 +5,12 @@
 # is mud grey and the wallpaper loses all contrast halfway. So the room goes to
 # deep night first, the scheme flips there, and the new wallpaper comes up.
 
+# Only act when the user chose "follow the sun" in the welcome wizard (or never chose).
+mode="$(dconf read /org/pridwen/look/mode 2>/dev/null)"
+case "$mode" in
+  "'day'"|"'night'") exit 0 ;;
+esac
+
 case "$1" in
   dark)  scheme=prefer-dark; solid='#111318' ;;
   light) scheme=default;     solid='#F2EDE3' ;;

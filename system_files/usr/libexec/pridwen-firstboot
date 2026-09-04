@@ -1,0 +1,395 @@
+#!/usr/bin/python3
+"""Pridwen welcome wizard.
+
+Runs in place of GNOME Initial Setup inside GDM's initial-setup session (as the
+gnome-initial-setup user, GNOME Shell in initial-setup mode). The installer
+creates no user; this creates one, records the learner's starting choices, and
+hands the new account to GDM so the desktop appears without a login prompt.
+
+Choices are written to dconf in this session. GDM's copy worker carries
+~/.config/dconf/user into the new user's home on first login, which is exactly
+how GNOME Initial Setup propagates its own settings.
+"""
+import os
+import pwd
+import re
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+gi.require_version("AccountsService", "1.0")
+gi.require_version("Gdm", "1.0")
+gi.require_version("Gdk", "4.0")
+from gi.repository import AccountsService, Adw, Gdk, Gdm, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.pridwen.FirstBoot"
+SERVICE_NAME = "gdm-password"
+NIGHT_WALLPAPER = "/usr/share/backgrounds/pridwen/pridwen-night.png"
+MARK = "/usr/share/icons/hicolor/scalable/apps/pridwen.svg"
+
+CSS = b"""
+window.pridwen {
+  background-color: #111318;
+  background-image: url("file://%s");
+  background-size: cover;
+  background-position: center;
+  color: #ECE6DA;
+}
+.glass {
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 34px;
+  padding: 40px 44px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.10), 0 24px 48px rgba(0,0,0,0.21), 0 70px 130px rgba(0,0,0,0.25);
+}
+.pridwen-title { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; color: #ECE6DA; }
+.pridwen-lede  { font-size: 15px; color: #B5AD9F; }
+.pridwen-muted { color: #7E776C; font-size: 13px; }
+.pridwen-primary {
+  background-color: #F2EDE3; color: #24211D; border-radius: 99px;
+  padding: 10px 26px; font-weight: 600;
+}
+.pridwen-primary:hover { background-color: #FFFFFF; }
+.pridwen-primary:disabled { background-color: rgba(242,237,227,0.25); color: rgba(36,33,29,0.6); }
+.pridwen-ghost { background: transparent; color: #B5AD9F; border-radius: 99px; padding: 10px 18px; }
+.pridwen-ghost:hover { background-color: rgba(255,255,255,0.06); color: #ECE6DA; }
+.pridwen-card row, .pridwen-card entry, .pridwen-card .boxed-list {
+  background-color: rgba(255,255,255,0.05);
+}
+.pridwen-card list.boxed-list { border-radius: 18px; border: 1px solid rgba(255,255,255,0.10); }
+.pridwen-card row { color: #ECE6DA; }
+.pridwen-card row:selected, .pridwen-card row:hover { background-color: rgba(255,255,255,0.08); }
+.pridwen-card row .subtitle { color: #B5AD9F; }
+.pridwen-dots { color: #7E776C; }
+.pridwen-dots .on { color: #ECE6DA; }
+""" % NIGHT_WALLPAPER.encode()
+
+USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+RESERVED = {"root", "gdm", "gnome-initial-setup", "pridwen", "admin", "administrator"}
+
+
+def dconf_write(path, gvariant_text):
+    subprocess.run(["dconf", "write", path, gvariant_text], check=False)
+
+
+def gsettings_set(schema, key, value):
+    subprocess.run(["gsettings", "set", schema, key, value], check=False)
+
+
+def suggest_username(fullname):
+    base = re.sub(r"[^a-z0-9]", "", fullname.split(" ")[0].lower()) if fullname.strip() else ""
+    return base[:32]
+
+
+class Page(Gtk.Box):
+    """One wizard step: a glass card with a title, lede, body, and its own validity."""
+
+    def __init__(self, wizard, title, lede, primary="Continue", ghost=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        self.wizard = wizard
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, width_request=560)
+        card.add_css_class("glass")
+        card.add_css_class("pridwen-card")
+        t = Gtk.Label(label=title, xalign=0, wrap=True)
+        t.add_css_class("pridwen-title")
+        l = Gtk.Label(label=lede, xalign=0, wrap=True)
+        l.add_css_class("pridwen-lede")
+        card.append(t)
+        card.append(l)
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        card.append(self.body)
+
+        footer = Gtk.Box(spacing=8, margin_top=10)
+        self.back = Gtk.Button(label="Back")
+        self.back.add_css_class("pridwen-ghost")
+        self.back.connect("clicked", lambda *_: wizard.go(-1))
+        footer.append(self.back)
+        spacer = Gtk.Box(hexpand=True)
+        footer.append(spacer)
+        if ghost:
+            g = Gtk.Button(label=ghost)
+            g.add_css_class("pridwen-ghost")
+            g.connect("clicked", lambda *_: wizard.go(+1))
+            footer.append(g)
+        self.next = Gtk.Button(label=primary)
+        self.next.add_css_class("pridwen-primary")
+        self.next.connect("clicked", self.on_next)
+        footer.append(self.next)
+        card.append(footer)
+        self.append(card)
+
+    def on_next(self, *_):
+        self.wizard.go(+1)
+
+    def validate(self):
+        self.next.set_sensitive(True)
+
+    def shown(self):
+        self.validate()
+
+
+class WelcomePage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Welcome to Pridwen", "A Linux that teaches you to run it. A few choices and the desktop is yours.")
+        self.back.set_visible(False)
+        img = Gtk.Image.new_from_file(MARK)
+        img.set_pixel_size(96)
+        img.set_halign(Gtk.Align.START)
+        self.body.append(img)
+        note = Gtk.Label(xalign=0, wrap=True, label="Your disk is encrypted, the firewall is closed, and the system runs from a read-only image that updates atomically. Every one of those is a lesson later.")
+        note.add_css_class("pridwen-muted")
+        self.body.append(note)
+
+
+class AccountPage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Create your account", "This is the administrator. sudo works, and every Coach hint is addressed to you.")
+        group = Adw.PreferencesGroup()
+        self.fullname = Adw.EntryRow(title="Full name")
+        self.username = Adw.EntryRow(title="Username")
+        self.password = Adw.PasswordEntryRow(title="Password")
+        self.confirm = Adw.PasswordEntryRow(title="Confirm password")
+        for r in (self.fullname, self.username, self.password, self.confirm):
+            group.add(r)
+            r.connect("changed", lambda *_: self.validate())
+        self.body.append(group)
+        self.hint = Gtk.Label(xalign=0, wrap=True, label="")
+        self.hint.add_css_class("pridwen-muted")
+        self.body.append(self.hint)
+        self._auto_username = True
+        self.fullname.connect("changed", self.on_fullname)
+        self.username.connect("changed", self.on_username_edit)
+
+    def on_fullname(self, *_):
+        if self._auto_username:
+            self.username.handler_block_by_func(self.on_username_edit)
+            self.username.set_text(suggest_username(self.fullname.get_text()))
+            self.username.handler_unblock_by_func(self.on_username_edit)
+
+    def on_username_edit(self, *_):
+        self._auto_username = self.username.get_text() == ""
+
+    def validate(self):
+        name = self.fullname.get_text().strip()
+        user = self.username.get_text()
+        pw, cf = self.password.get_text(), self.confirm.get_text()
+        problems = []
+        if not name:
+            problems.append("Enter your name.")
+        if not USERNAME_RE.match(user):
+            problems.append("Username: lowercase letters, digits, _ or -, starting with a letter.")
+        elif user in RESERVED:
+            problems.append("That username is reserved.")
+        else:
+            try:
+                pwd.getpwnam(user)
+                problems.append("That username already exists.")
+            except KeyError:
+                pass
+        if len(pw) < 8:
+            problems.append("Password: at least 8 characters. Longer beats clever.")
+        elif pw != cf:
+            problems.append("Passwords do not match.")
+        self.hint.set_text(problems[0] if problems else "Looks good.")
+        self.next.set_sensitive(not problems)
+
+    def shown(self):
+        self.validate()
+        self.fullname.grab_focus()
+
+
+class ChoicePage(Page):
+    """A single-choice page backed by a dconf key."""
+
+    def __init__(self, wizard, title, lede, key, choices, default):
+        super().__init__(wizard, title, lede)
+        self.key = key
+        self.value = default
+        group = Adw.PreferencesGroup()
+        first = None
+        self.rows = []
+        for value, label, subtitle in choices:
+            row = Adw.ActionRow(title=label, subtitle=subtitle, activatable=True)
+            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            if first is None:
+                first = check
+            else:
+                check.set_group(first)
+            check.set_active(value == default)
+            check.connect("toggled", self.on_toggle, value)
+            row.add_prefix(check)
+            row.set_activatable_widget(check)
+            group.add(row)
+            self.rows.append(row)
+        self.body.append(group)
+
+    def on_toggle(self, check, value):
+        if check.get_active():
+            self.value = value
+
+
+class GuidePage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "The Guide", "An assistant that explains what you're looking at and never runs anything for you.", primary="Continue", ghost=None)
+        note = Gtk.Label(xalign=0, wrap=True, label="Connect it later from the Academy: paste an API key for a cloud model, or pick a local model to stay fully offline. Nothing is sent anywhere until you do.")
+        note.add_css_class("pridwen-muted")
+        self.body.append(note)
+
+
+class PrivacyPage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Your learning stays here", "Progress, journal, and command history live in a local database on this computer. No account, no telemetry.", primary="Enter Pridwen")
+        self.status = Gtk.Label(xalign=0, wrap=True, label="")
+        self.status.add_css_class("pridwen-muted")
+        self.body.append(self.status)
+
+    def on_next(self, *_):
+        self.next.set_sensitive(False)
+        self.back.set_sensitive(False)
+        self.status.set_text("Creating your account…")
+        self.wizard.finish(self)
+
+
+class Wizard(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
+        self.pages = []
+        self.index = 0
+        self.greeter = None
+        self.verifier = None
+        self.password = None
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        prov = Gtk.CssProvider()
+        prov.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.connect_gdm()
+
+    def do_activate(self):
+        win = Adw.ApplicationWindow(application=self, title="Welcome to Pridwen")
+        win.add_css_class("pridwen")
+        win.set_deletable(False)
+        win.connect("close-request", lambda *_: True)
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT, transition_duration=380, hexpand=True, vexpand=True)
+        self.account = AccountPage(self)
+        self.track = ChoicePage(self, "Where are you starting from?", "This sets which lessons the Coach offers first. Change it any time in the Academy.",
+                                "/org/pridwen/learner/track",
+                                [("beginner", "Never used a terminal", "Start with the shell, files, and permissions."),
+                                 ("helpdesk", "I work help desk", "Skip the basics, go straight to users, services, and troubleshooting."),
+                                 ("cert", "I'm studying for a cert", "RHCSA first, Linux+ and Security+ alongside.")],
+                                "beginner")
+        self.look = ChoicePage(self, "Day or night?", "Cream by day, glass by night. Follow the sun and it changes itself.",
+                               "/org/pridwen/look/mode",
+                               [("auto", "Follow the sun", "Switches at sunrise and sunset."),
+                                ("day", "Always day", "The cream canvas."),
+                                ("night", "Always night", "Deep night, where the glass shows.")],
+                               "auto")
+        self.pages = [WelcomePage(self), self.account, self.track, self.look, GuidePage(self), PrivacyPage(self)]
+        for i, p in enumerate(self.pages):
+            self.stack.add_named(p, f"p{i}")
+        overlay = Gtk.Overlay(child=self.stack)
+        self.dots = Gtk.Label(halign=Gtk.Align.CENTER, valign=Gtk.Align.END, margin_bottom=28)
+        self.dots.add_css_class("pridwen-dots")
+        overlay.add_overlay(self.dots)
+        win.set_content(overlay)
+        win.fullscreen()
+        win.present()
+        self.show(0)
+
+    def show(self, i):
+        self.index = max(0, min(i, len(self.pages) - 1))
+        self.stack.set_visible_child_name(f"p{self.index}")
+        self.pages[self.index].shown()
+        self.dots.set_markup("  ".join('<span foreground="#ECE6DA">●</span>' if k == self.index else "○" for k in range(len(self.pages))))
+
+    def go(self, delta):
+        self.show(self.index + delta)
+
+    # ---- GDM handoff -------------------------------------------------------
+    def connect_gdm(self):
+        try:
+            client = Gdm.Client.new()
+            self.greeter = client.get_greeter_sync(None)
+            self.verifier = client.get_user_verifier_sync(None)
+        except Exception as e:  # noqa: BLE001
+            print(f"pridwen-firstboot: no GDM connection ({e}); will finish without auto-login", file=sys.stderr)
+            self.greeter = self.verifier = None
+            return
+        self.verifier.connect("secret-info-query", self.on_secret_query)
+        self.verifier.connect("problem", lambda v, s, p: print(f"PAM problem: {p}", file=sys.stderr))
+        self.greeter.connect("session-opened", self.on_session_opened)
+
+    def on_secret_query(self, verifier, service, question):
+        if self.password is not None:
+            verifier.call_answer_query(service, self.password, None, None, None)
+            self.password = None
+
+    def on_session_opened(self, greeter, service):
+        greeter.call_start_session_when_ready_sync(service, True, None)
+
+    # ---- finish ------------------------------------------------------------
+    def finish(self, page):
+        self.page = page
+        username = self.account.username.get_text()
+        fullname = self.account.fullname.get_text().strip()
+        self.password = self.account.password.get_text()
+        mgr = AccountsService.UserManager.get_default()
+
+        def create():
+            mgr.create_user_async(username, fullname, AccountsService.UserAccountType.ADMINISTRATOR, None, self.on_created, None)
+
+        if mgr.props.is_loaded:
+            create()
+        else:
+            mgr.connect("notify::is-loaded", lambda *_: create() if mgr.props.is_loaded else None)
+
+    def on_created(self, mgr, res, _data):
+        try:
+            user = mgr.create_user_finish(res)
+        except GLib.Error as e:
+            self.page.status.set_text(f"Could not create the account: {e.message}")
+            self.page.next.set_sensitive(True)
+            self.page.back.set_sensitive(True)
+            return
+        user.set_password(self.password, "")
+        user.set_password_mode(AccountsService.UserPasswordMode.REGULAR)
+        uid = user.get_uid()
+
+        # Choices, into this session's dconf: the copy worker carries them over.
+        dconf_write(self.track.key, f"'{self.track.value}'")
+        dconf_write(self.look.key, f"'{self.look.value}'")
+        scheme = {"day": "default", "night": "prefer-dark"}.get(self.look.value, "default")
+        gsettings_set("org.gnome.desktop.interface", "color-scheme", scheme)
+
+        home = GLib.get_home_dir()
+        os.makedirs(os.path.join(home, ".config"), exist_ok=True)
+        with open(os.path.join(home, ".config", "gnome-initial-setup-done"), "w") as f:
+            f.write("yes\n")
+        with open(os.path.join(home, "gnome-initial-setup-uid"), "w") as f:
+            f.write(f"{uid}")
+
+        self.page.status.set_text("Account ready. Opening your desktop…")
+        GLib.timeout_add(600, self.log_in, user.get_user_name())
+
+    def log_in(self, username):
+        if self.verifier is None or self.greeter is None:
+            self.page.status.set_text("Account created. Log in from the greeter.")
+            GLib.timeout_add(1500, lambda: (self.quit(), False)[1])
+            return False
+        self.get_active_window().set_visible(False)
+        try:
+            self.verifier.call_begin_verification_for_user_sync(SERVICE_NAME, username, None)
+        except GLib.Error as e:
+            print(f"pridwen-firstboot: begin verification failed: {e.message}", file=sys.stderr)
+            self.quit()
+        return False
+
+
+if __name__ == "__main__":
+    sys.exit(Wizard().run(sys.argv))
