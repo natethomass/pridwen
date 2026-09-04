@@ -40,6 +40,13 @@ def out(s=""):
 
 
 def cmd_why(args, lib, store):
+    if args and args[0] == "selinux":
+        if not selinux.enforcing():
+            out(text.hint("SELinux is not enforcing here, so nothing is being denied.", None))
+            return 0
+        se = selinux.latest_explanation(since_seconds=24 * 3600)
+        out(text.render(se) if se else text.hint("No SELinux denials in the last day (or the journal is not readable: `journalctl _TRANSPORT=audit`).", "selinux-01"))
+        return 0
     ev = store.last_failed(within=6 * 3600)
     if ev is None:
         out(text.hint("Nothing has failed in the last six hours. When a command does, `pridwen why` explains it.", None))
@@ -65,12 +72,23 @@ def cmd_why(args, lib, store):
         out(text.render(f"# {fill(rule.hint, groups)}"))
         out(text.para(f"Lesson: {rule.lesson}  ·  pridwen learn {rule.lesson}"))
         explained = True
+    # A recent denial is shown when nothing else explained the failure, or when
+    # the denied process is the command that failed. Otherwise it is noise from
+    # elsewhere on the system (daemons trip the policy too) and only gets a line.
     if selinux.enforcing():
-        se = selinux.latest_explanation(since_seconds=15 * 60)
-        if se:
-            out()
-            out(text.render(se))
-            explained = True
+        denials = selinux.recent_denials(since_seconds=15 * 60, limit=3)
+        if denials:
+            word = cmd.split()[0] if cmd.split() else ""
+            mine = [d for d in denials if d.get("comm", "").strip('"') == word]
+            if mine or not explained:
+                out()
+                out(text.render(selinux.translate((mine or denials)[0])))
+                if not mine:
+                    out(text.para("This denial may be unrelated to your command; it is the newest one on the system."))
+                explained = True
+            else:
+                out()
+                out(text.para(f"Also: SELinux denied `{denials[0].get('comm', '?')}` recently. `pridwen why selinux` translates it."))
     if not explained:
         meaning = EXIT_MEANINGS.get(code, "a program-specific status; its man page lists what each code means")
         out(text.render(f"# Exit status {code}\n\nExit {code} means {meaning}. "

@@ -21,6 +21,7 @@ MARK = "◆ pridwen"
 INDENT = "   "
 
 _CODE = re.compile(r"`([^`]+)`")
+_BOLD = re.compile(r"\*\*([^*]+)\*\*")
 
 
 def colour_enabled():
@@ -36,7 +37,8 @@ def width(default=96):
 
 def code_spans(s, colour=SAGE, use_colour=True):
     if not use_colour:
-        return _CODE.sub(r"\1", s)
+        return _BOLD.sub(r"\1", _CODE.sub(r"\1", s))
+    s = _BOLD.sub(lambda m: f"{BOLD}{m.group(1)}{RESET}", s)
     return _CODE.sub(lambda m: f"{colour}{m.group(1)}{RESET}", s)
 
 
