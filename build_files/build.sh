@@ -18,7 +18,10 @@ dnf5 install -y \
     gnome-initial-setup \
     zsh \
     tmux \
-    fastfetch \n    plymouth-plugin-script \n    plymouth-plugin-label \n    darkman
+    fastfetch \
+    plymouth-plugin-script \
+    plymouth-plugin-label \
+    darkman
 
 ### 3. Identity
 # Keep ID=fedora: tooling keys on it. Brand everything else.
@@ -66,7 +69,8 @@ chmod 0755 /usr/share/darkman/*.sh
 KVER="$(dnf5 repoquery --installed --queryformat='%{evr}.%{arch}' kernel | head -n1)"
 echo "Regenerating initramfs for kernel ${KVER}"
 export DRACUT_NO_XATTR=1
-dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v --add ostree     -f "/usr/lib/modules/${KVER}/initramfs.img"
+dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v --add ostree \
+    -f "/usr/lib/modules/${KVER}/initramfs.img"
 chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
 
 # Narrated boot lines and the day/night switcher.
