@@ -89,6 +89,35 @@ Operational notes (keep):
 - Known M0 leftovers for M1: hostname is still "fedora"; desktop is stock Fedora wallpaper
   and branding; VirtualBox guest additions not installed (no shared clipboard).
 
+## M1 status (2026-09-04, in progress)
+
+Four slices, each a commit on main. Verify the same way as M0: CI green, `bootc upgrade` in
+the VM, look. Slice 4 needs a fresh install (new ISO) because it only runs when no user exists.
+
+1. **Look basics** (7e22e82): Cream Glass wallpapers rendered by `scripts/gen-wallpapers.py`
+   from the mode.ts tokens; dconf distro defaults (`system_files/etc/dconf/db/distro.d`);
+   hostname `pridwen`; placeholder shield mark as os-release LOGO. Version 0.2.0-m1.
+2. **Boot and sun** (24e13d5): Plymouth script theme `pridwen` (assets from
+   `scripts/gen-plymouth-assets.py`), initramfs regenerated with dracut at build,
+   three `pridwen-narrate-*` units send plain-English lines via `plymouth display-message`,
+   darkman follows the sun and `usr/share/darkman/10-pridwen-gnome.sh` fades through deep
+   night. Deviation from the concept doc: Esc still shows Plymouth's raw details view (that
+   toggle is inside plymouthd, script themes cannot intercept it), so narration is always on
+   under the rail instead.
+3. **Greeter** (c4b81a2): `build_files/gdm-theme.sh` rewrites gnome-shell-theme.gresource
+   with `gdm-override.css` (glib2-devel installed for the step, removed after); gdm.d dconf.
+   Rules are appended overrides, so unknown selectors are harmless.
+4. **Welcome wizard** (a63ce98): `/usr/libexec/pridwen-firstboot` (PyGObject/libadwaita)
+   replaces the GIS binary through a drop-in on the user unit `gnome-initial-setup.service`;
+   GDM's initial-setup session, user, polkit rules and copy worker are reused. Creates the
+   admin user via AccountsService, writes choices to dconf (`/org/pridwen/learner/track`,
+   `/org/pridwen/look/mode`), writes `~/.config/gnome-initial-setup-done` and
+   `~/gnome-initial-setup-uid`, then logs in through libgdm (`gdm-password`).
+
+Known gaps for later: Shell top-bar styling (needs user-theme extension); language and
+keyboard pages in the wizard; Guide connection page is informational only until M5; the
+mark is a placeholder pending the owner's sign-off; VirtualBox has no guest additions.
+
 ## Useful references
 
 - Universal Blue image template (this repo's ancestor): https://github.com/ublue-os/image-template
