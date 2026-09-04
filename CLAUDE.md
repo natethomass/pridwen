@@ -174,8 +174,9 @@ touching rules or the daemon. Slices:
    via libnotify. Python package lives at `/usr/lib/pridwen/pridwen/` (no RPM/COPR yet).
 2. **Content**: `tree.yaml` (29 nodes), `rules/<node>.yaml` (~200), `nudges.yaml`,
    `lessons/<id>.md` (87), `explain/<cmd>.yaml` (30). Written by a subagent from the schema.
-3. **Verify in VM**: hook prints hints after failures, `pridwen why` explains, SELinux
-   denial translated, a nudge arrives after ten sudos, `pridwen quiet` silences.
+3. **Verify in VM** (2026-09-04, image dfb7d81 on "Pridwen M1 fresh"): owner confirmed the hook
+   prints hints after failures and `pridwen why/explain/status` work. Still to exercise:
+   SELinux denial translation on a real AVC, the ten-sudo nudge (Dispatch), `pridwen quiet`.
 
 Decisions: bash stays the default login shell (zsh hook shipped too); rules match the
 command with a leading sudo stripped (`not_sudo` distinguishes); output is never captured,
