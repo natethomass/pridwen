@@ -5,7 +5,7 @@ name: Build disk images
 #   qcow2         pre-installed disk for Proxmox / libvirt
 #   vmdk          pre-installed disk for VirtualBox
 # Run manually from the Actions tab after a container build has pushed :latest.
-# The plan job checks that :latest carries this commit's revision label first.
+# The plan job checks that :latest already contains this commit's image changes.
 
 on:
   workflow_dispatch:
@@ -46,20 +46,32 @@ jobs:
     outputs:
       types: ${{ steps.plan.outputs.types }}
     steps:
-      # A disk image is a snapshot of :latest at build time. Refuse to bake an ISO
-      # from an image that predates this commit (container build still running, or
-      # never triggered) so installer media never lags the repo silently.
-      - name: Check that :latest was built from this commit
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # A disk image is a snapshot of :latest at build time. Refuse to bake media
+      # from an image that is missing changes to the paths that go into the image
+      # (container build still running, or never triggered). Docs-only commits
+      # after a build are fine.
+      - name: Check that :latest matches this commit
         if: ${{ !inputs.allow-stale }}
         run: |
           ref="docker://${IMAGE_REGISTRY,,}/${IMAGE_NAME,,}:${DEFAULT_TAG}"
           built_from=$(skopeo inspect --override-os linux "${ref}" | jq -r '.Labels["org.opencontainers.image.revision"] // empty')
           echo "repo HEAD:   ${GITHUB_SHA}"
           echo "image built: ${built_from:-<no revision label>}"
-          if [[ "${built_from}" != "${GITHUB_SHA}" ]]; then
-            echo "::error::${ref} was not built from ${GITHUB_SHA}. Wait for the container build to go green, or re-run with allow-stale=true."
+          image_paths=(Containerfile Justfile build_files system_files .github/workflows/build.yml)
+          if [[ -z "${built_from}" ]] \
+             || ! git cat-file -e "${built_from}^{commit}" 2>/dev/null \
+             || ! git merge-base --is-ancestor "${built_from}" "${GITHUB_SHA}" \
+             || ! git diff --quiet "${built_from}" "${GITHUB_SHA}" -- "${image_paths[@]}"; then
+            git diff --stat "${built_from}" "${GITHUB_SHA}" -- "${image_paths[@]}" 2>/dev/null || true
+            echo "::error::${ref} lacks image changes from ${GITHUB_SHA}. Wait for the container build to go green, or re-run with allow-stale=true."
             exit 1
           fi
+          echo "ok: no image-affecting changes since ${built_from}"
 
       - id: plan
         run: |
