@@ -1,0 +1,7 @@
+# Default root filesystem for `bootc install` and for bootc-image-builder.
+# silverblue-main does not declare one; without it bootc-image-builder refuses to
+# build any disk type ("no default root filesystem type specified in container").
+# btrfs matches Fedora Workstation/Silverblue defaults. LUKS is layered on top by the
+# installer when the user ticks "Encrypt my data".
+[install.filesystem.root]
+type = "btrfs"
