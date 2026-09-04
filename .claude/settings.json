@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(just:*)",
+      "Bash(cosign:*)",
+      "Bash(curl -s https://api.github.com/*)",
+      "Bash(curl -s https://raw.githubusercontent.com/*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:osbuild.org)",
+      "WebFetch(domain:docs.fedoraproject.org)",
+      "WebFetch(domain:universal-blue.org)",
+      "WebFetch(domain:bootc.dev)"
+    ]
+  }
+}
