@@ -15,6 +15,9 @@ on:
       - 'LICENSE'
       - '.vscode/**'
       - '.claude/**'
+      - 'disk_config/**'          # consumed by build-disk.yml, not the image
+      - 'scripts/**'              # generators; their outputs are committed
+      - '.github/workflows/build-disk.yml'
   workflow_dispatch:
 
 env:

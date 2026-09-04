@@ -13,9 +13,11 @@
     background-position: 50% 0px;
 }
 .product-logo { background-image: none; }
-AnacondaSpokeWindow #nav-box {
+/* Anaconda's own rule only styles AnacondaSpokeWindow; the summary hub is a
+   different window class, so match the header by id. */
+#nav-box {
     background-color: #111318;
     background-image: none;
     color: #F2EDE3;
 }
-AnacondaSpokeWindow #nav-box label { color: #F2EDE3; }
+#nav-box label { color: #F2EDE3; }
