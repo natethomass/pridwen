@@ -1,0 +1,133 @@
+# Coach rules: scripting (automate)
+# Shebangs, execute bit, quoting, set -e, running a script.
+
+- id: script-not-executable
+  node: scripting
+  lesson: script-01
+  when:
+    command: '^\./(?P<path>\S+\.sh)\s*$'
+    exit: [126]
+    probe: exists:{path}
+  hint: >-
+    The file is there but not marked executable. `chmod +x {path}` sets the bit, or run it through the interpreter once with `bash {path}`.
+  why: |
+    Running `./{path}` asks the kernel to execute the file, which needs the execute bit.
+    Piping it to `bash` reads it as data instead, so it works without the bit but ignores
+    the shebang line.
+    Ways forward:
+      1. `chmod +x {path}`             set the execute bit
+      2. `./{path}`                    then run it directly
+      3. `bash {path}`                 one-off, no chmod
+  man: [chmod(1), bash(1)]
+  cooldown: 3600
+  priority: 10
+- id: script-not-found-dot
+  node: scripting
+  lesson: script-01
+  when:
+    command: '^(?P<name>[A-Za-z0-9_.-]+\.sh)\s*$'
+    exit: [127]
+    probe: exists:{name}
+  hint: >-
+    The script is in this directory but the current directory is not on PATH, so the shell did not find it. Run it as `./{name}`.
+  why: |
+    PATH does not include `.` on Fedora, on purpose: a file named `ls` in a directory you
+    cd into should never run instead of the real one. Naming the path explicitly with
+    `./` is how you run a local script.
+    Ways forward:
+      1. `./{name}`                    run the one here
+      2. `~/.local/bin`                put scripts you use everywhere on PATH here
+      3. `bash {name}`                 also works from the current directory
+  man: [bash(1)]
+  cooldown: 3600
+  priority: 10
+- id: script-no-shebang
+  node: scripting
+  lesson: script-01
+  when:
+    command: '^\./(?P<path>\S+)\s*$'
+    exit: [8]
+  hint: >-
+    An "Exec format error" usually means the script has no shebang, so the kernel did not know what interpreter to use. Put `#!/usr/bin/bash` on the first line.
+  man: [bash(1), execve(2)]
+  cooldown: 3600
+  priority: 8
+- id: script-bash-env
+  node: scripting
+  lesson: script-01
+  when:
+    command: '#!/usr/bin/env\s+(python|bash|sh|node)'
+    exit: any
+  hint: >-
+    `#!/usr/bin/env bash` finds the interpreter on PATH, which is the portable choice; `#!/usr/bin/bash` is fine on Pridwen where the path is fixed. Pick one and keep the file executable.
+  man: [env(1), bash(1)]
+  cooldown: 86400
+  priority: -5
+- id: script-sh-vs-bash
+  node: scripting
+  lesson: script-02
+  when:
+    command: '^sh\s+(?P<path>\S+\.sh)\b'
+    exit: [2]
+  hint: >-
+    Running a bash script with `sh` disables bashisms like `[[ ]]` and arrays, which is often the exit 2. Use `bash {path}`, or write POSIX sh and keep `sh`.
+  man: [sh(1), bash(1)]
+  cooldown: 3600
+  priority: 5
+- id: script-unbound-var
+  node: scripting
+  lesson: script-02
+  when:
+    command: 'unbound variable'
+    exit: any
+  hint: >-
+    That is `set -u` catching a variable you never assigned, often a typo in the name. The `:-` form, as in a default after a colon-dash, supplies a fallback when a variable may be unset.
+  man: [bash(1)]
+  cooldown: 3600
+  priority: 5
+- id: script-test-spacing
+  node: scripting
+  lesson: script-02
+  when:
+    command: '\[\s*\$?\w+[=!]=?\$?\w+\s*\]'
+    exit: any
+  hint: >-
+    `[` is a command, so it needs spaces around it and its operators: `[ "$a" = "$b" ]`. `[[ "$a" == "$b" ]]` is the bash form and is safer with unquoted variables.
+  man: [test(1), bash(1)]
+  cooldown: 86400
+  priority: 5
+- id: script-backticks
+  node: scripting
+  lesson: script-02
+  when:
+    command: '`[^`]+`'
+    exit: any
+  hint: >-
+    Backtick command substitution does not nest and hides escaping. `$(command)` is the modern form and reads better inside quotes.
+  man: [bash(1)]
+  cooldown: 86400
+  priority: -3
+- id: script-shellcheck-missing
+  node: scripting
+  lesson: script-03
+  when:
+    command: '^shellcheck\b'
+    exit: [127]
+    probe: no_command:shellcheck
+  hint: >-
+    `shellcheck` is not in the image but is worth having: `rpm-ostree install ShellCheck`, or run it inside a Distrobox. It catches quoting and portability bugs before they bite.
+  man: [rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10
+- id: script-crlf
+  node: scripting
+  lesson: script-01
+  when:
+    command: '^\./(?P<path>\S+)\s*$'
+    exit: [127]
+    probe: exists:{path}
+  hint: >-
+    A script edited on Windows can carry carriage returns that break the shebang, so the loader looks for an interpreter that does not exist. `sed -i 's/\r$//' {path}` strips them.
+  man: [sed(1), dos2unix(1)]
+  cooldown: 3600
+  priority: 3

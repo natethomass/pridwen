@@ -1,0 +1,198 @@
+# Pridwen skill tree. Node ids are stable; rules, lessons, nudges and the
+# Academy all key on them. Lesson ids use the node's short prefix (see
+# docs/coach.md) and map to lessons/<id>.md.
+
+tiers:
+  roots:    [terminal, files, permissions, users]
+  operate:  [processes, services, packages, networking, storage, boot]
+  secure:   [sudo, selinux, firewall, logging, ssh, hardening]
+  automate: [scripting, timers, containers, ansible]
+  defend:   [log-analysis, detection, incident-response, forensics]
+  attack:   [recon, web, credentials, privesc, persistence]
+
+nodes:
+  # roots
+  terminal:
+    title: Terminal
+    tier: roots
+    summary: The prompt, the PATH, exit codes, history, and how the shell reads what you type.
+    requires: []
+    lessons: [term-01, term-02, term-03]
+  files:
+    title: Files
+    tier: roots
+    summary: Moving around the tree and listing, reading, copying, moving, removing, and finding files.
+    requires: [terminal]
+    lessons: [file-01, file-02, file-03]
+  permissions:
+    title: Permissions
+    tier: roots
+    summary: Who may read, write, and run what, and how to change it.
+    requires: [files]
+    lessons: [perm-01, perm-02, perm-03]
+  users:
+    title: Users
+    tier: roots
+    summary: Accounts, groups, passwords, and how one person becomes another on a Linux system.
+    requires: [permissions]
+    lessons: [user-01, user-02, user-03]
+
+  # operate
+  processes:
+    title: Processes
+    tier: operate
+    summary: Seeing what is running, sending signals, and managing jobs and resources.
+    requires: [terminal]
+    lessons: [proc-01, proc-02, proc-03]
+  services:
+    title: Services
+    tier: operate
+    summary: systemd units, the difference between started and enabled, and reading a unit's state.
+    requires: [processes]
+    lessons: [svc-01, svc-02, svc-03]
+  packages:
+    title: Packages
+    tier: operate
+    summary: How software arrives on an image-based system through bootc, Flatpak, Distrobox, and rpm-ostree layering.
+    requires: [files]
+    lessons: [pkg-01, pkg-02, pkg-03]
+  networking:
+    title: Networking
+    tier: operate
+    summary: Addresses, routes, sockets, DNS, and NetworkManager with the ip, ss, and nmcli tools.
+    requires: [terminal]
+    lessons: [net-01, net-02, net-03]
+  storage:
+    title: Storage
+    tier: operate
+    summary: Disks, partitions, filesystems, mounting, disk space, and the LUKS layer under Pridwen.
+    requires: [files, permissions]
+    lessons: [store-01, store-02, store-03]
+  boot:
+    title: Boot
+    tier: operate
+    summary: Firmware to desktop, bootc deployments and rollback, and kernel arguments.
+    requires: [services, packages]
+    lessons: [boot-01, boot-02, boot-03]
+
+  # secure
+  sudo:
+    title: Sudo
+    tier: secure
+    summary: What sudo does, why only wheel may use it, and how every use is recorded.
+    requires: [users]
+    lessons: [sudo-01, sudo-02, sudo-03]
+  selinux:
+    title: SELinux
+    tier: secure
+    summary: Labels, enforcing mode, reading a denial, and fixing it without turning it off.
+    requires: [permissions, services]
+    lessons: [selinux-01, selinux-02, selinux-03]
+  firewall:
+    title: Firewall
+    tier: secure
+    summary: firewalld zones, the drop zone Pridwen boots into, and opening exactly one thing.
+    requires: [networking]
+    lessons: [fw-01, fw-02, fw-03]
+  logging:
+    title: Logging
+    tier: secure
+    summary: The journal, filtering it, and where auditd and the classic log files fit.
+    requires: [services]
+    lessons: [log-01, log-02, log-03]
+  ssh:
+    title: SSH
+    tier: secure
+    summary: Keys, the client, running sshd on purpose, and hardening it.
+    requires: [networking, users]
+    lessons: [ssh-01, ssh-02, ssh-03]
+  hardening:
+    title: Hardening
+    tier: secure
+    summary: The Pridwen baseline as a set of decisions you can read, check, and defend.
+    requires: [sudo, selinux, firewall]
+    lessons: [hard-01, hard-02, hard-03]
+
+  # automate
+  scripting:
+    title: Scripting
+    tier: automate
+    summary: Turning a working command line into a script that survives quoting, errors, and other people.
+    requires: [terminal, permissions]
+    lessons: [script-01, script-02, script-03]
+  timers:
+    title: Timers
+    tier: automate
+    summary: Scheduling work with systemd timers, and why cron is optional here.
+    requires: [services, scripting]
+    lessons: [timer-01, timer-02, timer-03]
+  containers:
+    title: Containers
+    tier: automate
+    summary: Rootless Podman, Distrobox, images, volumes, and SELinux labels on mounts.
+    requires: [packages, processes]
+    lessons: [ctr-01, ctr-02, ctr-03]
+  ansible:
+    title: Ansible
+    tier: automate
+    summary: Describing a system's desired state and applying it to Range hosts over SSH.
+    requires: [ssh, scripting]
+    lessons: [ansible-01, ansible-02, ansible-03]
+
+  # defend
+  log-analysis:
+    title: Log analysis
+    tier: defend
+    summary: Reading the journal and audit log like a story, finding the odd line among the normal ones.
+    requires: [logging]
+    lessons: [logan-01, logan-02, logan-03]
+  detection:
+    title: Detection
+    tier: defend
+    summary: Watch rules, file integrity, and alerts that fire before you would have noticed.
+    requires: [log-analysis, hardening]
+    lessons: [detect-01, detect-02, detect-03]
+  incident-response:
+    title: Incident response
+    tier: defend
+    summary: What to do in the first hour when a Range host is behaving strangely.
+    requires: [detection]
+    lessons: [ir-01, ir-02, ir-03]
+  forensics:
+    title: Forensics
+    tier: defend
+    summary: Timestamps, hashes, and disk images that let you say what happened after the fact.
+    requires: [incident-response, storage]
+    lessons: [forensics-01, forensics-02, forensics-03]
+
+  # attack
+  recon:
+    title: Recon
+    tier: attack
+    summary: How an attacker maps a network and its services, and what that looks like from the target.
+    requires: [networking, firewall]
+    lessons: [recon-01, recon-02, recon-03]
+  web:
+    title: Web
+    tier: attack
+    summary: HTTP as an attack surface, from headers and inputs to injection and the logs it leaves.
+    requires: [recon]
+    lessons: [web-01, web-02, web-03]
+  credentials:
+    title: Credentials
+    tier: attack
+    summary: Password guessing, hash cracking, and why keys and lockouts change the math.
+    requires: [recon, users]
+    lessons: [cred-01, cred-02, cred-03]
+  privesc:
+    title: Privilege escalation
+    tier: attack
+    summary: Going from a user shell to root through misconfigurations, and closing those doors.
+    requires: [credentials, sudo, permissions]
+    lessons: [privesc-01, privesc-02, privesc-03]
+  persistence:
+    title: Persistence
+    tier: attack
+    summary: How an attacker stays after a reboot, and where a defender looks for them.
+    requires: [privesc, timers]
+    lessons: [persist-01, persist-02, persist-03]

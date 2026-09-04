@@ -1,0 +1,12 @@
+command: firewall-cmd
+node: firewall
+summary: Configure the firewalld firewall.
+man: firewall-cmd(1)
+flags:
+  --list-all: Show everything the active zone permits.
+  --add-service: Allow a named service, such as ssh.
+  --add-port: Allow a port and protocol, such as 8080/tcp.
+  --permanent: Write the change to disk; apply it with --reload.
+  --reload: Apply the permanent configuration.
+  --runtime-to-permanent: Save the current runtime rules as permanent.
+  --get-active-zones: Show which zones are in force.

@@ -1,0 +1,25 @@
+# Coach rules: web (attack)
+# Defensive-first. Lab targets only, never real sites.
+
+- id: web-status-4xx
+  node: web
+  lesson: web-01
+  when:
+    command: '^curl\s+.*\shttp'
+    exit: [22]
+  hint: >-
+    curl exit 22 means the server returned 400 or above, which `-v` or the write-out format for the http code will show exactly. A run of 404s in a log is often someone scanning paths.
+  man: [curl(1)]
+  cooldown: 3600
+  priority: 5
+- id: web-traversal
+  node: web
+  lesson: web-02
+  when:
+    command: '(\.\./){2,}|%2e%2e%2f|/etc/passwd'
+    exit: any
+  hint: >-
+    That path-traversal shape belongs in a lab, aimed at a Range target you own. As a defender, the same string in an access log is the signature to alert on.
+  man: [curl(1)]
+  cooldown: 3600
+  priority: 10

@@ -1,0 +1,10 @@
+command: du
+node: storage
+summary: Estimate file and directory space usage.
+man: du(1)
+flags:
+  -h: Print sizes in human units.
+  -s: Show only a total for each argument.
+  -x: Stay on one filesystem.
+  -d: Limit how many directory levels are reported.
+  -a: Count files as well as directories.

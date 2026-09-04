@@ -1,0 +1,55 @@
+# Coach rules: privesc (attack)
+# Defensive-first. Every technique names the door and how to close it.
+
+- id: privesc-suid-find
+  node: privesc
+  lesson: privesc-01
+  when:
+    command: '^find\s+.*-perm\s+.*(4000|/[u]?[+]?s|u\+s)'
+    exit: any
+  hint: >-
+    That is the classic hunt for setuid binaries, which run as their owner regardless of who calls them. As a defender, `find / -perm -4000 -type f 2>/dev/null` is your inventory to keep short.
+  why: |
+    A setuid-root binary is a program any user can run that becomes root while it runs. A
+    bug in one is a path to root, so the fewer there are, the smaller the risk. This is a
+    defensive audit; only run the offensive follow-ups on a Range host.
+    Ways forward:
+      1. `find / -perm -4000 -type f 2>/dev/null`      list them
+      2. compare against a known-good list for the image
+      3. remove the bit from anything that does not need it, on a lab
+  man: [find(1), capabilities(7)]
+  cooldown: 3600
+  priority: 5
+- id: privesc-writable-service
+  node: privesc
+  lesson: privesc-02
+  when:
+    command: '^find\s+.*-perm\s+.*(0002|o\+w).*(/etc/systemd|/usr/lib/systemd)'
+    exit: any
+  hint: >-
+    A world-writable unit file or a directory holding one lets any user change what root runs at boot. On a Range host this is the finding; the fix is correct ownership and mode on `/etc/systemd`.
+  man: [find(1), systemd.unit(5)]
+  cooldown: 3600
+  priority: 5
+- id: privesc-gtfobins
+  node: privesc
+  lesson: privesc-03
+  when:
+    command: '^sudo\s+(vim?|less|find|awk|python3?|perl|nmap)\b.*(!|-c\s|--interactive|/bin/sh)'
+    exit: any
+  hint: >-
+    Several everyday tools can spawn a shell, so granting them through sudo hands out root. This is why Pridwen's wheel rule grants whole-command sudo to trusted users rather than piecemeal program rights.
+  man: [sudoers(5)]
+  cooldown: 3600
+  priority: 10
+- id: privesc-cron-writable
+  node: privesc
+  lesson: privesc-03
+  when:
+    command: '^find\s+.*(/etc/cron|/etc/systemd/system).*-writable'
+    exit: any
+  hint: >-
+    A writable scheduled job runs on someone else's schedule with their rights. On the defender's side, `systemctl list-timers` plus correct permissions on the unit files closes this path.
+  man: [find(1), systemd.timer(5)]
+  cooldown: 3600
+  priority: 5

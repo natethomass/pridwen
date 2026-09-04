@@ -1,0 +1,9 @@
+command: cat
+node: files
+summary: Concatenate files and print them.
+man: cat(1)
+flags:
+  -n: Number every output line.
+  -b: Number only non-blank output lines.
+  -A: Show non-printing characters, tabs, and line ends.
+  -s: Squeeze repeated blank lines into one.

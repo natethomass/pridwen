@@ -1,0 +1,9 @@
+command: mv
+node: files
+summary: Move or rename files and directories.
+man: mv(1)
+flags:
+  -i: Prompt before overwriting an existing file.
+  -n: Never overwrite an existing file.
+  -v: Print each file as it is moved.
+  -u: Move only when the source is newer than the destination.

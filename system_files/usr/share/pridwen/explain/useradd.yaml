@@ -1,0 +1,11 @@
+command: useradd
+node: users
+summary: Create a new user account.
+man: useradd(8)
+flags:
+  -m: Create the user's home directory.
+  -c: Set the comment or full-name field.
+  -G: Add the user to supplementary groups.
+  -s: Set the login shell.
+  -u: Set a specific user id.
+  -r: Create a system account.

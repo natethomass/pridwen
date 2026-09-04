@@ -1,0 +1,120 @@
+# Coach rules: processes (operate)
+# ps, top, kill, signals, jobs.
+
+- id: proc-kill-not-owner
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^kill\s+(-\S+\s+)*(?P<pid>\d+)\s*$'
+    not_sudo: true
+  hint: >-
+    You can only signal processes that run as you. `ps -o user=,comm= -p {pid}` shows who owns it; `sudo kill {pid}` if it is a system process you mean to stop.
+  why: |
+    The kernel checks that the sender's uid matches the target's before delivering a
+    signal. That is what stops one user from killing another's session, or a service.
+    Ways forward:
+      1. `ps -o user=,comm= -p {pid}`     who is it, what is it
+      2. `systemctl status {pid}`         if it belongs to a unit, stop the unit instead
+      3. `sudo kill {pid}`                as root, when that is the intent
+  man: [kill(1), signal(7), ps(1)]
+  cooldown: 3600
+  priority: 10
+- id: proc-kill-no-such
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^(sudo\s+)?kill\s+(-\S+\s+)*(?P<pid>\d+)\s*$'
+    exit: [1]
+  hint: >-
+    If `kill` said "No such process", {pid} already exited. `pgrep -a name` finds the current pid by name.
+  man: [kill(1), pgrep(1)]
+  cooldown: 3600
+  priority: 5
+- id: proc-kill-name
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^kill\s+(-\S+\s+)*(?P<name>[A-Za-z]\S*)\s*$'
+  hint: >-
+    `kill` takes a pid, not a name. `pkill {name}` signals by name, and `pgrep -a {name}` shows what would be hit first.
+  man: [kill(1), pkill(1)]
+  cooldown: 3600
+  priority: 8
+- id: proc-kill-9
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^(sudo\s+)?(kill|pkill|killall)\s+(-9|-KILL|-s\s+KILL)\b'
+    exit: any
+  hint: >-
+    SIGKILL cannot be caught, so the process gets no chance to flush or clean up. Plain `kill` sends SIGTERM first; reach for `-9` only when that was ignored.
+  man: [signal(7), kill(1)]
+  cooldown: 86400
+  priority: 5
+- id: proc-pkill-nomatch
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^(sudo\s+)?pkill\s+(-\S+\s+)*(?P<name>\S+)\s*$'
+    exit: [1]
+  hint: >-
+    Nothing matched `{name}`. `pgrep -af {name}` matches the whole command line, and `ps aux | grep {name}` shows the exact process name.
+  man: [pgrep(1), ps(1)]
+  cooldown: 3600
+- id: proc-killall-missing
+  node: processes
+  lesson: proc-02
+  when:
+    command: '^killall\b'
+    exit: [127]
+    probe: no_command:killall
+  hint: >-
+    `killall` comes from psmisc, which is not in this image. `pkill name` does the same job and ships with procps.
+  man: [pkill(1)]
+  cooldown: 86400
+  priority: 10
+- id: proc-htop-missing
+  node: processes
+  lesson: proc-01
+  when:
+    command: '^(htop|btop|glances)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is not in the image. `top` is, or layer it with `rpm-ostree install {cmd}` (active after reboot), or run it from a Distrobox.
+  man: [top(1), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10
+- id: proc-lsof-missing
+  node: processes
+  lesson: proc-03
+  when:
+    command: '^lsof\b'
+    exit: [127]
+    probe: no_command:lsof
+  hint: >-
+    `lsof` is not in the image. For ports use `ss -tlnp`; for who has a file open, `fuser -v file`; or `rpm-ostree install lsof`.
+  man: [ss(8), fuser(1)]
+  cooldown: 86400
+  priority: 10
+- id: proc-fg-no-job
+  node: processes
+  lesson: proc-03
+  when:
+    command: '^(fg|bg)\b'
+  hint: >-
+    There is no stopped or background job in this shell. `jobs` lists them; Ctrl-Z stops the foreground process so `bg` can resume it in the background.
+  man: [bash(1)]
+  cooldown: 3600
+- id: proc-strace-missing
+  node: processes
+  lesson: proc-03
+  when:
+    command: '^(strace|ltrace|perf)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is a debugging tool that is not in the base image. Run it from a Distrobox with the program you are tracing, or layer it with `rpm-ostree install {cmd}`.
+  man: [distrobox(1), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10

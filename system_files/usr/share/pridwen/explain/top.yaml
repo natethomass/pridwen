@@ -1,0 +1,10 @@
+command: top
+node: processes
+summary: Show processes updating in real time.
+man: top(1)
+flags:
+  -d: Set the update interval in seconds.
+  -u: Show only one user's processes.
+  -o: Sort by a chosen field.
+  -b: Batch mode, for sending output to a file.
+  -n: Exit after a given number of updates.

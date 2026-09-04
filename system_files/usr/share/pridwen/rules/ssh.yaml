@@ -1,0 +1,149 @@
+# Coach rules: ssh (secure)
+# The client, keys, sshd (off by default), scp and rsync.
+
+- id: ssh-localhost
+  node: ssh
+  lesson: ssh-02
+  when:
+    command: '^ssh\s+.*\b(localhost|127\.0\.0\.1|::1)\b'
+    exit: [255]
+  hint: >-
+    sshd is off by default on Pridwen, so nothing is listening on 22. `sudo systemctl enable --now sshd` starts it, and the drop zone still needs `sudo firewall-cmd --add-service=ssh` before anyone else can reach it.
+  why: |
+    A laptop rarely needs to accept logins, so the daemon is installed but disabled, and
+    the firewall would drop port 22 even if it were running. Turning it on is two
+    deliberate steps, and turning it off again is `sudo systemctl disable --now sshd`.
+    Ways forward:
+      1. `sudo systemctl enable --now sshd`                      listen
+      2. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`
+      3. `ssh localhost`                                          test from this machine
+  man: [sshd(8), systemctl(1), firewall-cmd(1)]
+  cooldown: 3600
+  priority: 20
+- id: ssh-failed
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh\s+(-\S+\s+)*(\S+@)?(?P<host>[\w.-]+)'
+    exit: [255]
+  hint: >-
+    Exit 255 is ssh itself failing: refused, timed out, host key changed, or no accepted key. `ssh -v {host}` narrates the attempt; refused usually means sshd is off or the firewall is dropping 22 on {host}.
+  why: |
+    ssh returns the remote command's exit code on success and 255 when the connection
+    itself failed. The reason is printed above, but `-v` shows which step it died on:
+    DNS, TCP connect, key exchange, or authentication.
+    Ways forward:
+      1. `ssh -v user@{host}`                          watch the handshake
+      2. `curl -v telnet://{host}:22`                  is the port open at all
+      3. `ssh-keygen -R {host}`                        if the host key changed and you know why
+  man: [ssh(1), sshd(8)]
+  cooldown: 3600
+  priority: -1
+- id: ssh-keygen-first
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh-keygen\s*(-t\s+\S+)?.*$'
+    exit: [0]
+  hint: >-
+    The private key stays in `~/.ssh` and never leaves this machine; the `.pub` half goes to servers. `ssh-copy-id user@host` installs it, after which the password prompt disappears.
+  man: [ssh-keygen(1), ssh-copy-id(1)]
+  cooldown: 604800
+  priority: -10
+- id: ssh-keygen-rsa
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh-keygen\s+.*-t\s+(rsa|dsa|ecdsa)\b'
+    exit: any
+  hint: >-
+    `ed25519` keys are shorter, faster and the current default: `ssh-keygen -t ed25519`. RSA still works, but there is no reason to pick it for a new key.
+  man: [ssh-keygen(1)]
+  cooldown: 86400
+  priority: 5
+- id: ssh-copy-id-failed
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh-copy-id\s+'
+  hint: >-
+    `ssh-copy-id` needs one password login to install the key, so the target must still allow password auth, and `~/.ssh/id_ed25519.pub` must exist. `ssh-keygen -t ed25519` if it does not.
+  man: [ssh-copy-id(1)]
+  cooldown: 3600
+- id: ssh-identity-file
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh\s+.*-i\s+(?P<path>\S+)'
+    exit: [255]
+  hint: >-
+    A private key that is readable by others is refused ("UNPROTECTED PRIVATE KEY FILE"). `chmod 600 {path}` and `chmod 700 ~/.ssh` fix the usual case.
+  man: [ssh(1), chmod(1)]
+  cooldown: 3600
+  priority: 3
+- id: ssh-agent-missing
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^ssh-add\b'
+    exit: [2]
+  hint: >-
+    No agent is reachable from this shell. In a GNOME session gnome-keyring provides one; in a bare shell `eval $(ssh-agent)` starts one for this terminal.
+  man: [ssh-add(1), ssh-agent(1)]
+  cooldown: 3600
+  priority: 5
+- id: ssh-scp-dir
+  node: ssh
+  lesson: ssh-01
+  when:
+    command: '^scp\s+(?!-r)(?P<src>[^-\s]\S*)\s+\S+:'
+    probe: is_dir:{src}
+  hint: >-
+    `scp` needs `-r` for a directory. `rsync -a {src}/ user@host:dest/` does the same and only sends what changed next time.
+  man: [scp(1), rsync(1)]
+  cooldown: 3600
+  priority: 8
+- id: ssh-sshd-config-edit
+  node: ssh
+  lesson: ssh-03
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/ssh/sshd_config)\b'
+    exit: [0]
+  hint: >-
+    Fedora reads `/etc/ssh/sshd_config.d/*.conf` first, so a small file there overrides the main one and survives updates. `sudo sshd -t` checks syntax before `sudo systemctl restart sshd`.
+  man: [sshd_config(5), sshd(8)]
+  cooldown: 3600
+  priority: 5
+- id: ssh-sshd-enabled
+  node: ssh
+  lesson: ssh-02
+  when:
+    command: '^sudo\s+systemctl\s+(enable|start)\s+(--now\s+)?sshd\b'
+    exit: [0]
+  hint: >-
+    sshd is now listening, and the drop zone still blocks 22 from other machines until `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`. `pridwen learn ssh-03` covers keys-only login.
+  man: [sshd(8), firewall-cmd(1)]
+  cooldown: 86400
+  priority: 10
+- id: ssh-permit-root
+  node: ssh
+  lesson: ssh-03
+  when:
+    command: 'PermitRootLogin\s+(yes|without-password)'
+    exit: any
+  hint: >-
+    Root over SSH is the account every scanner tries first, and Pridwen keeps root locked anyway. Log in as yourself and use `sudo`; `PermitRootLogin no` is the setting.
+  man: [sshd_config(5)]
+  cooldown: 3600
+  priority: 40
+- id: ssh-password-auth
+  node: ssh
+  lesson: ssh-03
+  when:
+    command: 'PasswordAuthentication\s+no'
+    exit: [0]
+  hint: >-
+    Keys only is the right target, so before restarting sshd make sure your key is already in `~/.ssh/authorized_keys` on that host and keep the current session open while you test a new one.
+  man: [sshd_config(5)]
+  cooldown: 86400
+  priority: 5

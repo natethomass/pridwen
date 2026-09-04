@@ -1,0 +1,13 @@
+command: journalctl
+node: logging
+summary: Query the systemd journal.
+man: journalctl(1)
+flags:
+  -u: Show messages for one unit.
+  -b: Limit to the current boot; -b -1 is the previous boot.
+  -f: Follow the journal as new entries arrive.
+  -p: Filter by priority, such as err, and worse.
+  -r: Show newest entries first.
+  --since: Show entries after a time, such as -1h or a quoted date.
+  -g: Grep entries with a regular expression.
+  -k: Show only kernel messages.

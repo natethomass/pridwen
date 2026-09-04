@@ -1,0 +1,9 @@
+command: bootc
+node: packages
+summary: Manage a bootable container host.
+man: bootc(8)
+flags:
+  status: Show the booted image and any staged or rollback deployment.
+  upgrade: Fetch and stage a newer image for the next boot.
+  switch: Change to a different image reference at the next boot.
+  rollback: Make the previous deployment boot next.

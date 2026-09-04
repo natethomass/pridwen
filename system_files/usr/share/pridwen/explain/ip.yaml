@@ -1,0 +1,10 @@
+command: ip
+node: networking
+summary: Show and manage addresses, links, and routes.
+man: ip(8)
+flags:
+  addr: Show or change interface addresses.
+  link: Show or change interface state and properties.
+  route: Show or change the routing table.
+  -br: Print a brief one-line-per-interface view.
+  -c: Colourise the output.

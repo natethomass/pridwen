@@ -1,0 +1,10 @@
+command: rm
+node: files
+summary: Remove files and directories.
+man: rm(1)
+flags:
+  -r: Remove directories and their contents recursively.
+  -f: Ignore missing files and never prompt.
+  -i: Prompt before each removal.
+  -v: Print each file as it is removed.
+  --one-file-system: When recursing, stay on the filesystem the argument is on.

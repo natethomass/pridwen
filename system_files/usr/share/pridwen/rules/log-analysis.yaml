@@ -1,0 +1,14 @@
+# Coach rules: log-analysis (defend)
+# Reading logs like a story. Range hosts only for anything adversarial.
+
+- id: logan-failed-logins
+  node: log-analysis
+  lesson: logan-02
+  when:
+    command: '(Failed password|authentication failure|Invalid user)'
+    exit: any
+  hint: >-
+    A burst of these from one address is a guessing attempt; on a Range host that is normal traffic to study. `journalctl _COMM=sshd -g Failed --since -1h | wc -l` counts them.
+  man: [journalctl(1), sshd(8)]
+  cooldown: 3600
+  priority: 5

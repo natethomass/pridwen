@@ -1,0 +1,8 @@
+command: cd
+node: terminal
+summary: Change the shell's working directory.
+man: cd(1p)
+flags:
+  '-': Return to the previous directory.
+  '~': Go to your home directory, the default when no path is given.
+  ..: Move to the parent of the current directory.

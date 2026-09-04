@@ -1,0 +1,156 @@
+# Coach rules: services (operate)
+# systemctl, units, enabled versus started, user units.
+
+- id: svc-systemctl-nosudo
+  node: services
+  lesson: svc-01
+  when:
+    command: '^systemctl\s+(?P<verb>start|stop|restart|reload|enable|disable|mask|unmask|daemon-reload|edit)\b'
+    not_sudo: true
+  hint: >-
+    Changing a system unit needs root: `sudo systemctl {verb} ...`. Add `--user` instead when the unit is one of your own.
+  why: |
+    systemd asked polkit whether you may manage system units, and from a terminal the
+    answer is no unless you authenticate. Reading state (`status`, `list-units`) never
+    needs root; changing it does.
+    Ways forward:
+      1. `sudo systemctl start unit`         the system manager
+      2. `systemctl --user start unit`       your own manager, no root
+      3. `systemctl status unit`             look first, no sudo needed
+  man: [systemctl(1), systemd.unit(5)]
+  cooldown: 3600
+  priority: 5
+- id: svc-no-unit
+  node: services
+  lesson: svc-01
+  when:
+    command: '^(sudo\s+)?systemctl\s+(--user\s+)?(start|stop|restart|status|enable|disable|cat|show)\s+(?P<unit>[\w@.-]+)\s*$'
+    probe: no_unit:{unit}
+  hint: >-
+    There is no unit named `{unit}`. `systemctl list-unit-files | grep -i {unit}` finds close matches; the package that provides it may not be in the image.
+  why: |
+    systemd looks for `{unit}` (adding `.service` if you gave no suffix) in
+    `/etc/systemd/system`, `/run/systemd/system` and `/usr/lib/systemd/system`. It is in
+    none of them.
+    Ways forward:
+      1. `systemctl list-unit-files | grep -i {unit}`   near misses
+      2. `rpm -ql package | grep systemd`               which units a package ships
+      3. `rpm-ostree install package`                   if the service is not in the image
+  man: [systemctl(1), systemd.unit(5)]
+  cooldown: 3600
+  priority: 10
+- id: svc-status-inactive
+  node: services
+  lesson: svc-02
+  when:
+    command: '^systemctl\s+(--user\s+)?status\s+(?P<unit>[\w@.-]+)\s*$'
+    exit: [3]
+  hint: >-
+    Exit 3 from `status` just means `{unit}` is not running; the output above is still complete. `sudo systemctl start {unit}` starts it now, `enable --now` also at boot.
+  man: [systemctl(1)]
+  cooldown: 3600
+  priority: 5
+- id: svc-status-unknown
+  node: services
+  lesson: svc-01
+  when:
+    command: '^systemctl\s+(--user\s+)?status\s+(?P<unit>[\w@.-]+)\s*$'
+    exit: [4]
+  hint: >-
+    Exit 4 means systemd has never heard of `{unit}`. Check the spelling, or `systemctl list-unit-files` to see what exists.
+  man: [systemctl(1)]
+  cooldown: 3600
+  priority: 6
+- id: svc-enable-not-start
+  node: services
+  lesson: svc-02
+  when:
+    command: '^sudo\s+systemctl\s+enable\s+(?!--now)(?P<unit>[\w@.-]+)\s*$'
+    exit: [0]
+  hint: >-
+    `enable` only wires `{unit}` into the next boot; it is not running yet. `sudo systemctl start {unit}` now, or use `enable --now` next time.
+  why: |
+    systemd separates the two questions "should this run at boot" (enabled, a symlink in
+    `/etc/systemd/system/*.wants/`) and "is it running now" (active). `enable` answers the
+    first only.
+    Ways forward:
+      1. `sudo systemctl start {unit}`             run it now
+      2. `sudo systemctl enable --now {unit}`      both at once
+      3. `systemctl is-enabled {unit}; systemctl is-active {unit}`   check each
+  man: [systemctl(1)]
+  cooldown: 86400
+  priority: -2
+- id: svc-start-not-enable
+  node: services
+  lesson: svc-02
+  when:
+    command: '^sudo\s+systemctl\s+start\s+(?P<unit>[\w@.-]+)\s*$'
+    exit: [0]
+  hint: >-
+    `{unit}` is running until the next reboot. If it should come back on its own, `sudo systemctl enable {unit}` as well.
+  man: [systemctl(1)]
+  cooldown: 86400
+  priority: -3
+- id: svc-service-compat
+  node: services
+  lesson: svc-01
+  when:
+    command: '^(sudo\s+)?service\s+(?P<name>\S+)\s+(?P<action>\S+)'
+    exit: any
+  hint: >-
+    `service` is a compatibility wrapper from the SysV days. The native form is `systemctl {action} {name}`, which also understands `status`, `enable` and `--user`.
+  man: [systemctl(1)]
+  cooldown: 86400
+  priority: 5
+- id: svc-chkconfig
+  node: services
+  lesson: svc-02
+  when:
+    command: '^(sudo\s+)?(chkconfig|update-rc\.d|rc-update)\b'
+    exit: any
+  hint: >-
+    That tool belongs to an older init system. `systemctl enable name` and `systemctl disable name` do the job here, and `systemctl list-unit-files --state=enabled` lists what is on.
+  man: [systemctl(1)]
+  cooldown: 86400
+  priority: 10
+- id: svc-user-with-sudo
+  node: services
+  lesson: svc-03
+  when:
+    command: '^sudo\s+systemctl\s+--user\b'
+    exit: any
+  hint: >-
+    `sudo systemctl --user` talks to root's user manager, not yours, and usually fails to find it. Drop the `sudo` for your own units.
+  man: [systemctl(1)]
+  cooldown: 3600
+  priority: 20
+- id: svc-unit-edited
+  node: services
+  lesson: svc-03
+  when:
+    command: '^(sudo\s+)?(cp|mv|vim?|nano|tee|ln)\s+.*(?P<path>/etc/systemd/system/[\w@.-]+\.(service|timer|socket|mount))\b'
+    exit: [0]
+  hint: >-
+    systemd reads unit files at load time, so run `sudo systemctl daemon-reload` before starting it. `systemctl cat {path}` shows what it loaded.
+  man: [systemctl(1), systemd.service(5)]
+  cooldown: 3600
+  priority: 5
+- id: svc-failed-unit
+  node: services
+  lesson: svc-03
+  when:
+    command: '^sudo\s+systemctl\s+(start|restart)\s+(?P<unit>[\w@.-]+)\s*$'
+    exit: [1]
+  hint: >-
+    `{unit}` refused to start. `systemctl status {unit}` shows the exit reason, and `journalctl -u {unit} -n 30` the last thirty lines it logged.
+  why: |
+    Exit 1 from `systemctl start` means the unit's main process exited or the unit's
+    conditions failed. The reason is in the journal, not on your terminal.
+    Ways forward:
+      1. `systemctl status {unit}`                      summary and last log lines
+      2. `journalctl -u {unit} -b`                      everything since boot
+      3. `systemctl cat {unit}`                         read the ExecStart it tried
+      4. `sudo systemctl reset-failed {unit}`           clear the failed state after fixing
+  man: [systemctl(1), journalctl(1)]
+  cooldown: 1800
+  priority: 8

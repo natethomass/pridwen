@@ -1,0 +1,9 @@
+command: mount
+node: storage
+summary: Attach a filesystem to the tree.
+man: mount(8)
+flags:
+  -a: Mount everything listed in fstab that is not yet mounted.
+  -o: Pass mount options, such as ro for read-only.
+  -t: Specify the filesystem type.
+  --bind: Remount an existing tree at another point.

@@ -1,0 +1,124 @@
+# Dispatch nudges. Count-based ones fire once when the threshold is crossed;
+# event-based ones fire when the daemon raises the named event. Each fires
+# once per install unless repeat is set. Cap is 3 per day, quiet hours apply.
+
+- id: sudo-ten
+  node: sudo
+  lesson: sudo-01
+  count:
+    command: '^sudo\b'
+    threshold: 10
+  title: Ten sudos in
+  body: You have run sudo ten times. Want to see what it actually does and why only wheel may use it.
+
+- id: systemctl-fifteen
+  node: services
+  lesson: svc-02
+  count:
+    command: '^(sudo\s+)?systemctl\b'
+    threshold: 15
+  title: You live in systemctl now
+  body: Fifteen systemctl calls. The difference between enabled and started trips up almost everyone.
+
+- id: journalctl-ten
+  node: logging
+  lesson: log-02
+  count:
+    command: '^journalctl\b'
+    threshold: 10
+  title: Reading the journal
+  body: Ten journalctl runs. A few filters turn a wall of text into an answer.
+
+- id: podman-five
+  node: containers
+  lesson: ctr-01
+  count:
+    command: '^podman\b'
+    threshold: 5
+  title: Getting comfortable with Podman
+  body: Five podman commands. Here is why Pridwen runs them rootless and daemonless.
+
+- id: rpm-ostree-five
+  node: packages
+  lesson: pkg-03
+  count:
+    command: '^(sudo\s+)?rpm-ostree\b'
+    threshold: 5
+  title: Layering on an image
+  body: Five rpm-ostree calls. Deployments and rollback are what make that safe.
+
+- id: dnf-attempts
+  node: packages
+  lesson: pkg-01
+  count:
+    command: '^(sudo\s+)?(dnf|yum|apt|apt-get)\b'
+    threshold: 3
+  title: There is no dnf here
+  body: You have reached for dnf a few times. On an image-based system the tools are Flatpak, Distrobox and rpm-ostree.
+
+- id: firewall-five
+  node: firewall
+  lesson: fw-02
+  count:
+    command: '^sudo\s+firewall-cmd\b'
+    threshold: 5
+  title: Shaping the firewall
+  body: Five firewall-cmd calls. Runtime versus permanent is the part worth pinning down.
+
+- id: ssh-attempts
+  node: ssh
+  lesson: ssh-02
+  count:
+    command: '^ssh\s'
+    threshold: 5
+  title: Reaching other machines
+  body: Five ssh attempts. Keys, and turning sshd on with intent, make this smoother.
+
+- id: git-twenty
+  node: scripting
+  lesson: script-03
+  count:
+    command: '^git\b'
+    threshold: 20
+  title: You use git a lot
+  body: Twenty git commands. A short detour into what a commit really is can save you later.
+
+- id: chmod-777-repeat
+  node: permissions
+  lesson: perm-03
+  count:
+    command: '^(sudo\s+)?chmod\s+(-R\s+)?(777|0777|a\+rwx)\b'
+    threshold: 3
+  title: The 777 habit
+  body: Three wide-open chmods. There is almost always a narrower fix, and it is worth learning once.
+  repeat: 604800
+
+- id: selinux-first-denial
+  node: selinux
+  lesson: selinux-01
+  event: selinux_denial
+  title: SELinux just said no
+  body: Something was blocked by SELinux. Want it translated into plain English.
+
+- id: bootc-staged
+  node: packages
+  lesson: pkg-03
+  event: bootc_staged
+  title: An update is staged
+  body: A new Pridwen image is ready for the next boot. See what changed before you reboot.
+
+- id: range-incident
+  node: incident-response
+  lesson: ir-01
+  event: range_incident
+  title: Something is happening on the Range
+  body: A scenario host just did something worth noticing. Want to walk through the first hour.
+
+- id: history-repeat-fail
+  node: terminal
+  lesson: term-02
+  count:
+    command: '.'
+    threshold: 50
+  title: Getting your footing
+  body: Fifty commands in. If exit codes are still a mystery, this is a good moment to decode them.

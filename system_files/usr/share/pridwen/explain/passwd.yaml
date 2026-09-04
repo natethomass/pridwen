@@ -1,0 +1,10 @@
+command: passwd
+node: users
+summary: Change a user's password.
+man: passwd(1)
+flags:
+  -l: Lock the account's password.
+  -u: Unlock the account's password.
+  -d: Remove the password so the account has none.
+  -e: Expire the password so it must be changed at next login.
+  -S: Show the password status for an account.

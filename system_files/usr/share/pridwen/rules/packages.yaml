@@ -1,0 +1,192 @@
+# Coach rules: packages (operate)
+# The image-based model: bootc, rpm-ostree, Flatpak, Distrobox, pip.
+
+- id: pkg-dnf-in-container
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '^(sudo\s+)?(dnf|yum|apt|apt-get)\b'
+    probe: in_container
+  hint: >-
+    Inside a Distrobox, `{cmd}` is the right tool and `sudo` uses your own password. If it failed, check the network from inside (`curl -I https://mirrors.fedoraproject.org`) and the repo config.
+  man: [distrobox(1), dnf(8)]
+  cooldown: 3600
+  priority: 45
+- id: pkg-dnf-on-host
+  node: packages
+  lesson: pkg-01
+  when:
+    command: '^(sudo\s+)?(dnf|yum|dnf5)\s+(?P<sub>\S+)'
+    exit: any
+    probe: ostree
+  hint: >-
+    Pridwen is image-based, so `dnf` does not manage the booted system. Desktop apps come from Flatpak, CLI tools from a Distrobox, and anything that must be on the host is layered with `rpm-ostree install`.
+  why: |
+    The base of this system is a container image mounted read-only at `/usr`. dnf would
+    need to write there. Instead of a mutable package database, you have deployments:
+    the current image, a staged one after `bootc upgrade`, and a rollback.
+    Ways forward:
+      1. `flatpak search name`                        graphical apps, Flathub
+      2. `distrobox create -n dev -i fedora:43 && distrobox enter dev`   dnf works inside
+      3. `rpm-ostree install name`                    layered on the image, active after reboot
+      4. `rpm-ostree install --apply-live name`       layered now, for simple packages
+  man: [rpm-ostree(1), bootc(8), flatpak(1), distrobox(1)]
+  cooldown: 3600
+  priority: 40
+- id: pkg-foreign-manager
+  node: packages
+  lesson: pkg-01
+  when:
+    command: '^(sudo\s+)?(apt|apt-get|aptitude|pacman|zypper|emerge|apk|brew)\b'
+    exit: any
+  hint: >-
+    `{cmd}` is another distribution's package manager. On Pridwen the equivalents are `flatpak`, `distrobox`, and `rpm-ostree install`.
+  man: [rpm-ostree(1), flatpak(1)]
+  cooldown: 3600
+  priority: 40
+- id: pkg-rpm-install
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^(sudo\s+)?rpm\s+(-[iUe]\S*|--install|--upgrade|--erase)\b'
+    exit: any
+    probe: ostree
+  hint: >-
+    `rpm` cannot write into the read-only image. `rpm-ostree install ./file.rpm` layers a local package; `rpm -q` and `rpm -ql` still work for querying.
+  man: [rpm-ostree(1), rpm(8)]
+  cooldown: 3600
+  priority: 30
+- id: pkg-pip-system
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '^(sudo\s+)?(pip3?|python3?\s+-m\s+pip)\s+install\b(?!.*--user)'
+    exit: any
+    probe: not in_container
+  hint: >-
+    System-wide pip fails here: `/usr` is read-only and Fedora marks its Python as externally managed. Make a venv (`python3 -m venv .venv && source .venv/bin/activate`) or use `pipx install`.
+  why: |
+    Two guards stop `pip install` on the host: the image is immutable, and PEP 668 marks
+    the system interpreter so pip refuses to mix its packages with the distribution's.
+    Both point the same way: keep Python projects in their own environment.
+    Ways forward:
+      1. `python3 -m venv .venv && source .venv/bin/activate && pip install name`
+      2. `pipx install name`               for command-line tools, each in its own venv
+      3. `distrobox enter`                 when you need a mutable system Python
+  man: [venv(1), pip(1)]
+  cooldown: 3600
+  priority: 20
+- id: pkg-rpm-ostree-nosudo
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^rpm-ostree\s+(install|uninstall|override|upgrade|rebase|rollback|kargs\s+--|reset|cleanup)\b'
+    not_sudo: true
+  hint: >-
+    Changing deployments needs root: `sudo rpm-ostree {cmd} ...`. `rpm-ostree status` and `search` work without it.
+  man: [rpm-ostree(1)]
+  cooldown: 3600
+  priority: 5
+- id: pkg-status-first
+  node: packages
+  lesson: pkg-01
+  when:
+    command: '^(sudo\s+)?(rpm-ostree|bootc)\s+status\b'
+    exit: [0]
+  hint: >-
+    Each entry is a deployment: the booted image, anything staged for the next boot, and the previous one kept for rollback. The digest is the exact image from `ghcr.io/natethomass/pridwen`.
+  man: [bootc(8), rpm-ostree(1)]
+  cooldown: 604800
+  priority: -10
+- id: pkg-layer-reboot
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^sudo\s+rpm-ostree\s+install\s+(?!.*--apply-live)'
+    exit: [0]
+  hint: >-
+    The package is layered into a new deployment and shows up after a reboot. `--apply-live` makes simple packages usable now; `rpm-ostree status` shows the pending entry.
+  man: [rpm-ostree(1)]
+  cooldown: 86400
+  priority: -5
+- id: pkg-upgrade-staged
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^sudo\s+(bootc\s+upgrade|rpm-ostree\s+upgrade)\b'
+    exit: [0]
+  hint: >-
+    If a new image was found it is staged, not running. `bootc status` shows it; the next reboot boots into it and keeps the current one as rollback.
+  man: [bootc(8)]
+  cooldown: 86400
+  priority: -5
+- id: pkg-rebase
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^sudo\s+(bootc\s+switch|rpm-ostree\s+rebase)\b'
+    exit: any
+  hint: >-
+    Switching images replaces the whole OS at next boot while keeping `/etc` and `/var`. Layered packages and the rollback entry survive; check `bootc status` before rebooting.
+  man: [bootc(8), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 5
+- id: pkg-flatpak-notfound
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '^flatpak\s+(install|run|info)\s+(?P<name>[^-\s]\S*)\s*$'
+  hint: >-
+    Flatpak names are ids like `org.gnome.Loupe`. `flatpak search {name}` finds the id; Pridwen only has Flathub configured, so no remote name is needed.
+  why: |
+    Flatpak addresses apps by reverse-DNS id, not package name. `install` also accepts a
+    remote name first, which is why a bare word confuses it.
+    Ways forward:
+      1. `flatpak search {name}`                     find the id
+      2. `flatpak install flathub org.example.App`   install it
+      3. `flatpak list`                              see what you already have
+  man: [flatpak(1), flatpak-search(1)]
+  cooldown: 3600
+  priority: 5
+- id: pkg-flatpak-sudo
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '^sudo\s+flatpak\b'
+    exit: any
+  hint: >-
+    `flatpak` does not need sudo; system-wide installs ask polkit, and `--user` installs need nothing. With sudo the cache and permissions end up under root.
+  man: [flatpak(1)]
+  cooldown: 86400
+  priority: 10
+- id: pkg-make-install
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '^(sudo\s+)?make\s+install\b'
+    exit: any
+  hint: >-
+    On Pridwen `/usr/local` lives in `/var/usrlocal`, so `sudo make install` does land somewhere writable, but builds are easier to clean up inside a Distrobox or with `--prefix=$HOME/.local`.
+  man: [distrobox(1), hier(7)]
+  cooldown: 86400
+  priority: 15
+- id: pkg-curl-pipe-sh
+  node: packages
+  lesson: pkg-02
+  when:
+    command: '(curl|wget)\s+.*\|\s*(sudo\s+)?(ba|z)?sh\b'
+    exit: any
+  hint: >-
+    Piping a download into a shell runs whatever the server sent, with no chance to read it. Download to a file, read it, then run it, and prefer a Flatpak or Distrobox when one exists.
+  man: [curl(1), bash(1)]
+  cooldown: 3600
+  priority: 40
+- id: pkg-rpm-ostree-search
+  node: packages
+  lesson: pkg-03
+  when:
+    command: '^rpm-ostree\s+search\s+(?P<name>\S+)'
+  hint: >-
+    Nothing in the Fedora repos matched `{name}`. Try a shorter word, or `flatpak search {name}` in case it is a desktop app.
+  man: [rpm-ostree(1)]
+  cooldown: 3600

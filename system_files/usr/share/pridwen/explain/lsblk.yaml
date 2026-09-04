@@ -1,0 +1,9 @@
+command: lsblk
+node: storage
+summary: List block devices as a tree.
+man: lsblk(8)
+flags:
+  -f: Show filesystem type, label, and UUID.
+  -p: Print full device paths.
+  -o: Choose which columns to show.
+  -a: Include empty devices.

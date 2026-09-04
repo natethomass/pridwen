@@ -1,0 +1,26 @@
+# Coach rules: recon (attack)
+# Defensive-first. Scan only lab targets you own.
+
+- id: recon-nmap-missing
+  node: recon
+  lesson: recon-01
+  when:
+    command: '^nmap\b'
+    exit: [127]
+    probe: no_command:nmap
+  hint: >-
+    nmap is not in the base image; run it from a Distrobox aimed at your Range, never at machines you do not own. `sudo ss -tlnp` shows the same open ports from inside a host you control.
+  man: [distrobox(1), ss(8)]
+  cooldown: 86400
+  priority: 10
+- id: recon-scan-target
+  node: recon
+  lesson: recon-01
+  when:
+    command: '^(sudo\s+)?nmap\s+.*(?P<target>\d+\.\d+\.\d+\.\d+|[a-z0-9.-]+)'
+    exit: any
+  hint: >-
+    Only scan hosts you are authorised to, which in Pridwen means your Range (`web-01`, the Rocky twins). From the target's side a scan is just a burst of connection attempts in `ss` and the journal.
+  man: [nmap(1)]
+  cooldown: 3600
+  priority: 5

@@ -1,0 +1,79 @@
+# Coach rules: timers (automate)
+# systemd timers, cron, OnCalendar.
+
+- id: timer-crontab
+  node: timers
+  lesson: timer-01
+  when:
+    command: '^crontab\s+-[el]\b'
+    exit: any
+  hint: >-
+    cron is not installed by default on Pridwen; systemd timers do the same job with logs and status. `systemctl --user list-timers` shows yours, and a `.timer` plus `.service` pair replaces a crontab line.
+  why: |
+    A systemd timer records each run in the journal, shows its next fire time in
+    `list-timers`, and can depend on other units. cron works, but a timer is easier to
+    see and debug, so Pridwen leads with it.
+    Ways forward:
+      1. `systemctl --user list-timers --all`          what runs and when
+      2. write `job.service` and `job.timer` in `~/.config/systemd/user/`
+      3. `systemctl --user enable --now job.timer`      turn it on
+  man: [systemd.timer(5), systemctl(1)]
+  cooldown: 86400
+  priority: 15
+- id: timer-cron-missing
+  node: timers
+  lesson: timer-01
+  when:
+    command: '^(crontab|crond)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    cron is not in the image. Use a systemd timer, or layer cron with `rpm-ostree install cronie` if a script truly expects it.
+  man: [systemd.timer(5), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10
+- id: timer-oncalendar
+  node: timers
+  lesson: timer-02
+  when:
+    command: 'OnCalendar='
+    exit: any
+  hint: >-
+    `systemd-analyze calendar "Mon *-*-* 09:00"` shows the next times a spec will fire, so you can check it before enabling. `daily`, `weekly` and `*-*-* 03:00` are common forms.
+  man: [systemd.time(7), systemd-analyze(1)]
+  cooldown: 86400
+  priority: 5
+- id: timer-enable-not-timer
+  node: timers
+  lesson: timer-02
+  when:
+    command: '^systemctl\s+(--user\s+)?enable\s+(--now\s+)?(?P<unit>\S+\.service)\s*$'
+    exit: [0]
+  hint: >-
+    Enabling the `.service` alone does not schedule it; the paired `.timer` is what fires it. `systemctl --user enable --now {unit}` becomes the timer of the same name.
+  man: [systemd.timer(5)]
+  cooldown: 86400
+  priority: -3
+- id: timer-persistent
+  node: timers
+  lesson: timer-02
+  when:
+    command: 'Persistent=true'
+    exit: any
+  hint: >-
+    `Persistent=true` runs a missed job once after the machine comes back, which is what you want for a laptop that is not always on at 03:00. `OnCalendar` timers support it; monotonic ones do not.
+  man: [systemd.timer(5)]
+  cooldown: 86400
+  priority: -5
+- id: timer-at-missing
+  node: timers
+  lesson: timer-03
+  when:
+    command: '^(at|atq|batch)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `at` is not in the image. `systemd-run --on-calendar="2026-09-05 09:00" command` schedules a single future run instead.
+  man: [systemd-run(1)]
+  cooldown: 86400
+  priority: 10

@@ -1,0 +1,67 @@
+# Coach rules: ansible (automate)
+# Running against Range hosts, inventory, idempotence.
+
+- id: ansible-missing
+  node: ansible
+  lesson: ansible-01
+  when:
+    command: '^(ansible|ansible-playbook|ansible-galaxy|ansible-vault)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    Ansible is not in the base image. `pipx install ansible-core` gives you the command in its own environment, or run it from a Distrobox aimed at your Range hosts.
+  man: [pipx(1), ansible(1)]
+  cooldown: 86400
+  priority: 10
+- id: ansible-localhost-root
+  node: ansible
+  lesson: ansible-01
+  when:
+    command: '^ansible(-playbook)?\s+.*(-i\s+localhost|--connection[= ]local)'
+    probe: ostree
+  hint: >-
+    Running Ansible against this immutable host will fail on any task that writes to `/usr`. Point it at a Range host or a Distrobox; Pridwen itself changes through its image, not a playbook.
+  man: [ansible(1), bootc(8)]
+  cooldown: 86400
+  priority: 15
+- id: ansible-no-inventory
+  node: ansible
+  lesson: ansible-02
+  when:
+    command: '^ansible(-playbook)?\s+'
+    exit: [4]
+  hint: >-
+    Exit 4 means hosts were unreachable, usually SSH: the key is not installed on the target or the host name is not in your inventory. `ansible all -m ping -i inventory` tests reachability alone.
+  why: |
+    Ansible connects over SSH and needs three things lined up: a host in the inventory, a
+    username, and a key the target accepts. Exit 4 means it reached none of the hosts it
+    was asked to.
+    Ways forward:
+      1. `ansible all -m ping -i inventory`             prove connectivity first
+      2. `ssh-copy-id user@web-01`                       install your key on the target
+      3. `ansible-playbook -i inventory site.yml --check` dry run once it connects
+  man: [ansible(1), ansible-inventory(1)]
+  cooldown: 3600
+  priority: 8
+- id: ansible-syntax
+  node: ansible
+  lesson: ansible-02
+  when:
+    command: '^ansible-playbook\s+'
+    exit: [1]
+  hint: >-
+    Exit 1 is often a YAML or task error before anything ran. `ansible-playbook --syntax-check site.yml` catches it, and `--check --diff` shows what a run would change.
+  man: [ansible-playbook(1)]
+  cooldown: 3600
+  priority: 5
+- id: ansible-become
+  node: ansible
+  lesson: ansible-01
+  when:
+    command: '^ansible(-playbook)?\s+.*(-K|--ask-become-pass|--become)\b'
+    exit: any
+  hint: >-
+    `--become` runs tasks through sudo on the target, and `-K` prompts for that sudo password once. The target user still needs to be in wheel there, just as on Pridwen.
+  man: [ansible-playbook(1), sudoers(5)]
+  cooldown: 86400
+  priority: -5

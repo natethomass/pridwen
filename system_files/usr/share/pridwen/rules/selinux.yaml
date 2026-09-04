@@ -1,0 +1,136 @@
+# Coach rules: selinux (secure)
+# Enforcing mode, denials, contexts, restorecon, booleans, semanage.
+
+- id: selinux-setenforce-0
+  node: selinux
+  lesson: selinux-01
+  when:
+    command: '^(sudo\s+)?setenforce\s+(0|[Pp]ermissive)\b'
+    exit: any
+  hint: >-
+    Permissive mode turns every denial into a log line and lets the action through, for the whole system, until reboot. Find the one denial instead: `sudo ausearch -m avc -ts recent`, then `pridwen why`.
+  why: |
+    SELinux enforcing is part of the Pridwen baseline. A denial means one process touched
+    one thing the policy did not expect; the fix is a label, a boolean, or a small policy
+    module, not switching the guard off for everything. Permissive mode is a diagnostic,
+    and only a short one.
+    Ways forward:
+      1. `sudo ausearch -m avc -ts recent`         the denials from the last ten minutes
+      2. `pridwen why`                              translated into plain English
+      3. `sudo restorecon -Rv path`                 if the label is wrong
+      4. `sudo setsebool -P boolean on`             if a boolean covers it
+      5. `sudo setenforce 1`                        back to enforcing if you did switch
+  man: [setenforce(8), ausearch(8), restorecon(8), setsebool(8)]
+  cooldown: 3600
+  priority: 50
+- id: selinux-setenforce-nosudo
+  node: selinux
+  lesson: selinux-01
+  when:
+    command: '^setenforce\b'
+    not_sudo: true
+  hint: >-
+    Changing the enforcing mode needs root, and on Pridwen it should stay at 1. `getenforce` reads the mode without root.
+  man: [setenforce(8), getenforce(8)]
+  cooldown: 3600
+  priority: 5
+- id: selinux-config-disable
+  node: selinux
+  lesson: selinux-01
+  when:
+    command: 'SELINUX=(disabled|permissive)'
+    exit: any
+  hint: >-
+    That line in `/etc/selinux/config` turns SELinux off at the next boot and, if disabled, drops labels so re-enabling means a full relabel. Leave it `enforcing` and fix the one denial.
+  man: [selinux_config(5), selinux(8)]
+  cooldown: 3600
+  priority: 50
+- id: selinux-ausearch-nosudo
+  node: selinux
+  lesson: selinux-02
+  when:
+    command: '^(ausearch|aureport|auditctl)\b'
+    not_sudo: true
+  hint: >-
+    The audit log in `/var/log/audit/` is root-only: `sudo {cmd} ...`. For SELinux denials, `sudo ausearch -m avc -ts recent`.
+  man: [ausearch(8), auditd(8)]
+  cooldown: 3600
+  priority: 5
+- id: selinux-ausearch-empty
+  node: selinux
+  lesson: selinux-02
+  when:
+    command: '^sudo\s+ausearch\b'
+    exit: [1]
+  hint: >-
+    Exit 1 from `ausearch` means no matching records, which is good news. Widen the window with `-ts today`, or check `-m avc` was spelled as an uppercase-insensitive type.
+  man: [ausearch(8)]
+  cooldown: 3600
+  priority: 5
+- id: selinux-restorecon-nosudo
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^restorecon\b'
+    not_sudo: true
+  hint: >-
+    You can relabel your own files, but anything under `/etc`, `/var` or another user's home needs `sudo restorecon -Rv path`.
+  man: [restorecon(8)]
+  cooldown: 3600
+  priority: 5
+- id: selinux-chcon
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^(sudo\s+)?chcon\b'
+    exit: any
+  hint: >-
+    `chcon` sets a label that the next `restorecon` or relabel will undo. `sudo semanage fcontext -a -t type 'path(/.*)?'` then `restorecon -Rv path` makes it permanent.
+  man: [chcon(1), semanage-fcontext(8), restorecon(8)]
+  cooldown: 86400
+  priority: 10
+- id: selinux-semanage-missing
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^(sudo\s+)?(semanage|audit2why|audit2allow|sealert)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` comes from policycoreutils-python-utils (or setroubleshoot), which the base image does not carry. `rpm-ostree install policycoreutils-python-utils` layers it; until then `pridwen why` translates the last denial.
+  man: [semanage(8), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10
+- id: selinux-setsebool-nosudo
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^setsebool\b'
+    not_sudo: true
+  hint: >-
+    Booleans are policy switches and need root to flip: `sudo setsebool -P name on`. `getsebool -a | grep name` reads them without root.
+  man: [setsebool(8), getsebool(8)]
+  cooldown: 3600
+  priority: 5
+- id: selinux-setsebool-temp
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^sudo\s+setsebool\s+(?!-P)'
+    exit: [0]
+  hint: >-
+    Without `-P` that boolean resets at the next boot. Add `-P` once you have confirmed it fixes the denial.
+  man: [setsebool(8)]
+  cooldown: 86400
+  priority: -3
+- id: selinux-home-served
+  node: selinux
+  lesson: selinux-03
+  when:
+    command: '^(sudo\s+)?ln\s+-s\s+.*/home/\S+\s+/var/www'
+    exit: any
+  hint: >-
+    Files under `/home` carry `user_home_t`, which httpd may not read even through a symlink. Copy them under `/var/www` and `restorecon`, or label the directory with `semanage fcontext`.
+  man: [httpd_selinux(8), semanage-fcontext(8)]
+  cooldown: 86400
+  priority: 10

@@ -1,0 +1,12 @@
+command: rpm-ostree
+node: packages
+summary: Manage the image-based system's deployments.
+man: rpm-ostree(1)
+flags:
+  status: Show the deployments, marking the booted and pending ones.
+  install: Layer a package onto the image, active after reboot.
+  uninstall: Remove a previously layered package.
+  upgrade: Stage the latest image for the next boot.
+  rollback: Make the previous deployment boot next.
+  --apply-live: Apply a layering change to the running system as well.
+  kargs: Show or change kernel arguments.

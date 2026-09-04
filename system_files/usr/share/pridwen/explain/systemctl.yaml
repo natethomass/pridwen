@@ -1,0 +1,12 @@
+command: systemctl
+node: services
+summary: Control the systemd service manager.
+man: systemctl(1)
+flags:
+  start: Start a unit now.
+  stop: Stop a running unit now.
+  enable: Set a unit to start at boot; add --now to also start it.
+  status: Show whether a unit is loaded, enabled, and active, with recent log lines.
+  --user: Act on the calling user's own manager rather than the system one.
+  --failed: List units that have failed.
+  daemon-reload: Reload unit files after editing one by hand.

@@ -1,0 +1,9 @@
+command: kill
+node: processes
+summary: Send a signal to a process.
+man: kill(1)
+flags:
+  '-9': Send SIGKILL, which cannot be caught, as a last resort.
+  '-15': Send SIGTERM, the polite default that asks a process to stop.
+  -l: List the signal names and numbers.
+  -s: Send a signal by name, such as -s HUP.

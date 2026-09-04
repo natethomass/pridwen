@@ -1,0 +1,7 @@
+command: setenforce
+node: selinux
+summary: Set the SELinux mode for the running system.
+man: setenforce(8)
+flags:
+  '1': Switch to Enforcing.
+  '0': Switch to Permissive, which logs denials instead of blocking, until reboot.

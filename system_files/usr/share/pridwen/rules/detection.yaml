@@ -1,0 +1,25 @@
+# Coach rules: detection (defend)
+
+- id: detect-auditctl-nosudo
+  node: detection
+  lesson: detect-01
+  when:
+    command: '^auditctl\b'
+    not_sudo: true
+  hint: >-
+    Audit rules are kernel state and need root: `sudo auditctl -l` lists them. Persistent rules go in `/etc/audit/rules.d/`.
+  man: [auditctl(8), audit.rules(7)]
+  cooldown: 3600
+  priority: 5
+- id: detect-aide-missing
+  node: detection
+  lesson: detect-02
+  when:
+    command: '^(aide|tripwire|rkhunter|chkrootkit)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is not in the image. On a bootc host `/usr` is already verified by the image digest; for `/etc` and `/var`, `rpm-ostree status` plus `ostree admin config-diff` shows drift, and AIDE can be layered for a Range host.
+  man: [ostree(1), rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10

@@ -1,0 +1,108 @@
+# Coach rules: logging (secure)
+# journalctl, /var/log, dmesg, auditd.
+
+- id: log-journalctl-first
+  node: logging
+  lesson: log-01
+  when:
+    command: '^journalctl\s*$'
+    exit: [0]
+  hint: >-
+    That is everything the journal holds, oldest first. If it warned that you are "not seeing messages from other users", your account is not in `wheel` or `systemd-journal` yet; otherwise `journalctl -r -n 50` is the useful starting view.
+  man: [journalctl(1)]
+  cooldown: 604800
+  priority: -10
+- id: log-classic-files
+  node: logging
+  lesson: log-03
+  when:
+    command: '(?P<path>/var/log/(messages|syslog|auth\.log|secure|kern\.log|daemon\.log))\b'
+    probe: missing:{path}
+  hint: >-
+    Fedora does not write `{path}` unless rsyslog is installed; the journal holds those lines. `journalctl -u sshd`, `journalctl -k`, or `journalctl _COMM=sudo` are the equivalents.
+  why: |
+    systemd-journald collects kernel, service and login messages in a binary, indexed
+    journal under `/var/log/journal/`. The classic text files only appear if a syslog
+    daemon is installed to write them, and Pridwen does not ship one.
+    Ways forward:
+      1. `journalctl -p warning -b`            warnings and worse since boot
+      2. `journalctl -u NetworkManager -f`     follow one service
+      3. `journalctl _COMM=sudo`               the old /var/log/secure sudo lines
+  man: [journalctl(1), systemd-journald.service(8)]
+  cooldown: 3600
+  priority: 20
+- id: log-tail-f-var-log
+  node: logging
+  lesson: log-01
+  when:
+    command: '^tail\s+-[fF]\s+/var/log/'
+  hint: >-
+    For a live view of the system, `journalctl -f` follows everything and `journalctl -f -u unit` follows one service.
+  man: [journalctl(1)]
+  cooldown: 3600
+  priority: 10
+- id: log-since-syntax
+  node: logging
+  lesson: log-02
+  when:
+    command: '^journalctl\s+.*--since'
+  hint: >-
+    `--since` takes `"2026-09-04 08:00"`, `today`, `yesterday`, `-1h`, or `"10 min ago"`, quoted when it contains a space.
+  man: [journalctl(1), systemd.time(7)]
+  cooldown: 3600
+  priority: 5
+- id: log-follow-stopped
+  node: logging
+  lesson: log-01
+  when:
+    command: '^journalctl\s+.*-f\b'
+    exit: [130]
+  hint: >-
+    Ctrl-C is the normal way to leave `journalctl -f`. `-n 100` before `-f` shows some history first.
+  man: [journalctl(1)]
+  cooldown: 86400
+  priority: 5
+- id: log-dmesg-nosudo
+  node: logging
+  lesson: log-01
+  when:
+    command: '^dmesg\b'
+    not_sudo: true
+  hint: >-
+    The kernel ring buffer is restricted to root on Pridwen (`kernel.dmesg_restrict=1`). `journalctl -k` shows the same messages for wheel members, or `sudo dmesg -T`.
+  man: [dmesg(1), journalctl(1)]
+  cooldown: 3600
+  priority: 10
+- id: log-audit-log
+  node: logging
+  lesson: log-03
+  when:
+    command: '^(cat|less|tail|grep)\s+.*(?P<path>/var/log/audit/audit\.log)'
+    not_sudo: true
+  hint: >-
+    The audit log is root-only, and `ausearch` is the tool for it: `sudo ausearch -ts today -m USER_CMD` for sudo commands, `-m avc` for SELinux.
+  man: [ausearch(8), auditd(8)]
+  cooldown: 3600
+  priority: 10
+- id: log-vacuum-nosudo
+  node: logging
+  lesson: log-03
+  when:
+    command: '^journalctl\s+--(vacuum|rotate|flush|verify)'
+    not_sudo: true
+  hint: >-
+    Trimming or rotating the journal writes to `/var/log/journal`, so it needs `sudo`. `journalctl --disk-usage` reads the size without it.
+  man: [journalctl(1)]
+  cooldown: 3600
+  priority: 5
+- id: log-last
+  node: logging
+  lesson: log-03
+  when:
+    command: '^(last|lastb|lastlog)\b'
+    exit: any
+  hint: >-
+    Recent Fedora keeps logins in wtmpdb and the journal rather than `/var/log/wtmp`, so `{cmd}` may be empty. `wtmpdb last` and `journalctl -u systemd-logind` show sessions; `lastlog2` shows last logins.
+  man: [wtmpdb(8), journalctl(1)]
+  cooldown: 86400
+  priority: 5

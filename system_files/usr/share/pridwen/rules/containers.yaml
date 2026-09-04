@@ -1,0 +1,120 @@
+# Coach rules: containers (automate)
+# Podman, Distrobox, docker habits, SELinux mount labels.
+
+- id: ctr-docker
+  node: containers
+  lesson: ctr-01
+  when:
+    command: '^docker\b'
+    exit: [127]
+    probe: no_command:docker
+  hint: >-
+    Pridwen ships Podman, not Docker, and the commands match: `podman run`, `podman ps`, `podman build`. It is rootless and daemonless, so there is no socket or service to start.
+  why: |
+    Podman speaks the same CLI as Docker and reads the same images, but runs each
+    container as your user with no background daemon. That means a compromised container
+    is confined to your account, not root.
+    Ways forward:
+      1. `podman run -it fedora:43 bash`        a throwaway shell
+      2. `alias docker=podman`                  if muscle memory insists
+      3. `podman ps -a`                         list containers, running or not
+  man: [podman(1)]
+  cooldown: 86400
+  priority: 20
+- id: ctr-docker-sock
+  node: containers
+  lesson: ctr-01
+  when:
+    command: '/var/run/docker\.sock|DOCKER_HOST'
+    exit: any
+  hint: >-
+    There is no Docker daemon here. If a tool needs a socket, `systemctl --user enable --now podman.socket` provides a Docker-compatible one at `$XDG_RUNTIME_DIR/podman/podman.sock`.
+  man: [podman-system-service(1)]
+  cooldown: 86400
+  priority: 15
+- id: ctr-run-first
+  node: containers
+  lesson: ctr-01
+  when:
+    command: '^podman\s+run\s+'
+    exit: [0]
+  hint: >-
+    That container ran as your user, mapped into a range of subordinate uids, so root inside it is not root on the host. `podman ps -a` shows it; `--rm` removes it on exit.
+  man: [podman-run(1)]
+  cooldown: 604800
+  priority: -10
+- id: ctr-volume-selinux
+  node: containers
+  lesson: ctr-03
+  when:
+    command: '^podman\s+run\s+.*-v\s+(?P<src>\S+):(?P<dst>[^:\s]+)\s'
+    exit: any
+  hint: >-
+    A bind mount without a label suffix can be denied by SELinux. Add `:Z` to relabel it for this container alone, or `:z` to share it, as in `-v {src}:{dst}:Z`.
+  why: |
+    Host files carry labels the container's SELinux type may not read. `:Z` relabels the
+    source to a private container label; `:z` uses a shared one. Without either, the
+    denial looks like a permission error inside the container.
+    Ways forward:
+      1. `-v {src}:{dst}:Z`             private to this container
+      2. `-v {src}:{dst}:z`             shared between containers
+      3. `podman volume create name`    a managed volume, already labelled
+  man: [podman-run(1), podman-volume(1)]
+  cooldown: 3600
+  priority: 10
+- id: ctr-port-privileged
+  node: containers
+  lesson: ctr-02
+  when:
+    command: '^podman\s+run\s+.*-p\s+(?P<port>[0-9]{1,3}):'
+    exit: any
+  hint: >-
+    A rootless container cannot bind host ports below 1024 by default. Map to a high port like `-p 8080:80`, or lower the threshold with `sysctl net.ipv4.ip_unprivileged_port_start`.
+  man: [podman-run(1)]
+  cooldown: 3600
+  priority: 5
+- id: ctr-rootful-podman
+  node: containers
+  lesson: ctr-02
+  when:
+    command: '^sudo\s+podman\s+run\b'
+    exit: any
+  hint: >-
+    `sudo podman` runs the container as real root, which drops the isolation rootless mode gives you. Rootless (`podman` without sudo) is the default here; use sudo only when a container genuinely needs host root.
+  man: [podman(1)]
+  cooldown: 86400
+  priority: 10
+- id: ctr-compose-missing
+  node: containers
+  lesson: ctr-03
+  when:
+    command: '^docker-compose\b'
+    exit: [127]
+    probe: no_command:docker-compose
+  hint: >-
+    Use `podman compose` (or `podman-compose`) for the same YAML. For services that should survive a reboot, `podman generate systemd` or a Quadlet `.container` file is the Pridwen way.
+  man: [podman-compose(1), quadlet(5)]
+  cooldown: 86400
+  priority: 10
+- id: ctr-quadlet
+  node: containers
+  lesson: ctr-03
+  when:
+    command: '(?P<path>/etc/containers/systemd/\S+\.container)|\.config/containers/systemd/'
+    exit: any
+  hint: >-
+    Quadlet files turn a container into a systemd unit at boot, which is how Pridwen prefers to run persistent containers. `systemctl daemon-reload` regenerates the unit after you edit one.
+  man: [quadlet(5), podman-systemd.unit(5)]
+  cooldown: 86400
+  priority: 5
+- id: ctr-pull-first
+  node: containers
+  lesson: ctr-01
+  when:
+    command: '^podman\s+pull\s+(?P<name>[^/]+)\s*$'
+    exit: any
+  hint: >-
+    A short name like `{name}` is resolved against the registries in `/etc/containers/registries.conf`. A fully qualified name such as `docker.io/library/{name}` avoids the ambiguity.
+  man: [podman-pull(1), containers-registries.conf(5)]
+  cooldown: 86400
+  priority: 5

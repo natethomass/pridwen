@@ -1,0 +1,13 @@
+command: grep
+node: files
+summary: Search input for lines matching a pattern.
+man: grep(1)
+flags:
+  -r: Search recursively through directories.
+  -n: Prefix each match with its line number.
+  -i: Ignore case when matching.
+  -v: Select lines that do not match.
+  -l: Print only the names of files that contain a match.
+  -E: Interpret the pattern as an extended regular expression.
+  -o: Print only the matched part of each line.
+  -c: Print a count of matching lines per file.

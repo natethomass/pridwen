@@ -1,0 +1,9 @@
+command: chown
+node: permissions
+summary: Change file owner and group.
+man: chown(1)
+flags:
+  -R: Change ownership recursively through a directory tree.
+  -v: Report the change made to every file.
+  -c: Report only files whose ownership actually changed.
+  --reference: Copy the owner and group from a named reference file.

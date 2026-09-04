@@ -1,0 +1,11 @@
+command: ssh
+node: ssh
+summary: Log in to and run commands on a remote host.
+man: ssh(1)
+flags:
+  -i: Use a specific private key file.
+  -p: Connect to a non-default port.
+  -v: Print verbose debugging about the connection.
+  -L: Forward a local port to the remote side.
+  -N: Do not run a remote command, used with forwarding.
+  -J: Connect through a jump host.

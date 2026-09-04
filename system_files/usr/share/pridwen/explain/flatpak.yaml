@@ -1,0 +1,11 @@
+command: flatpak
+node: packages
+summary: Install and run sandboxed applications.
+man: flatpak(1)
+flags:
+  install: Install an application, by default from Flathub.
+  run: Run an installed application by its id.
+  list: List installed applications and runtimes.
+  search: Search remotes for an application id.
+  update: Update installed applications.
+  --user: Act on the per-user installation rather than system-wide.

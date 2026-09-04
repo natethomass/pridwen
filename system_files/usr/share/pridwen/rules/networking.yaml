@@ -1,0 +1,177 @@
+# Coach rules: networking (operate)
+# ip, ss, ping, DNS, nmcli, old tools that are not shipped.
+
+- id: net-ifconfig
+  node: networking
+  lesson: net-01
+  when:
+    command: '^(sudo\s+)?ifconfig\b'
+    exit: any
+    probe: no_command:ifconfig
+  hint: >-
+    `ifconfig` is not shipped; `ip addr` shows interfaces and addresses, `ip -br addr` the short form. The iproute2 tools replaced net-tools years ago.
+  why: |
+    net-tools stopped tracking the kernel's networking features long ago. iproute2 (`ip`,
+    `ss`, `bridge`) covers everything ifconfig, route and netstat did, and more.
+    Ways forward:
+      1. `ip -br addr`               addresses, one line per interface
+      2. `ip link`                   interface state and MAC
+      3. `ip route`                  the routing table, including the default gateway
+  man: [ip(8), ip-address(8)]
+  cooldown: 86400
+  priority: 30
+- id: net-netstat
+  node: networking
+  lesson: net-02
+  when:
+    command: '^(sudo\s+)?netstat\b'
+    exit: any
+    probe: no_command:netstat
+  hint: >-
+    `netstat` is not shipped. `ss -tulnp` lists listening TCP and UDP sockets with the owning process; `ss -tn` shows established connections.
+  man: [ss(8)]
+  cooldown: 86400
+  priority: 30
+- id: net-route
+  node: networking
+  lesson: net-01
+  when:
+    command: '^(sudo\s+)?route\b'
+    exit: any
+    probe: no_command:route
+  hint: >-
+    `route` is not shipped. `ip route` prints the table and `ip route get 1.1.1.1` shows which path a packet would take.
+  man: [ip-route(8)]
+  cooldown: 86400
+  priority: 30
+- id: net-ping-unresolved
+  node: networking
+  lesson: net-02
+  when:
+    command: '^ping\s+(-\S+\s+)*(?P<host>[^-\s]\S*)\s*$'
+    exit: [2]
+  hint: >-
+    Exit 2 from `ping` means the name did not resolve or there was no route. `resolvectl query {host}` tests DNS on its own; `ip route` shows whether you have a default route at all.
+  why: |
+    ping separates "no answers" (exit 1) from "could not even send" (exit 2). Exit 2 is
+    almost always DNS or a missing route, so test those layers separately.
+    Ways forward:
+      1. `ping 1.1.1.1`                 if this works, the network is up and DNS is the problem
+      2. `resolvectl status`            which DNS servers this host is using (Pridwen uses DNS over TLS)
+      3. `nmcli device status`          is the interface connected
+  man: [ping(8), resolvectl(1), nmcli(1)]
+  cooldown: 3600
+  priority: 8
+- id: net-ping-no-reply
+  node: networking
+  lesson: net-02
+  when:
+    command: '^ping\s+(-\S+\s+)*(?P<host>[^-\s]\S*)\s*$'
+    exit: [1]
+  hint: >-
+    `ping` sent packets to {host} and got nothing back. Many hosts, including Pridwen's own drop zone, ignore ICMP; `curl -I` or `ss` against a real port tells you more.
+  man: [ping(8), curl(1)]
+  cooldown: 3600
+  priority: 6
+- id: net-dig-missing
+  node: networking
+  lesson: net-02
+  when:
+    command: '^(dig|nslookup|host)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is in bind-utils, which the image does not carry. `resolvectl query name` asks systemd-resolved directly, and `getent hosts name` uses the same path as programs do.
+  man: [resolvectl(1), getent(1)]
+  cooldown: 86400
+  priority: 10
+- id: net-ip-change-nosudo
+  node: networking
+  lesson: net-03
+  when:
+    command: '^ip\s+(link|addr|address|route)\s+(add|del|set|change|replace|flush)\b'
+    not_sudo: true
+  hint: >-
+    Changing addresses or routes needs root, and NetworkManager will put things back on the next reconnect. `nmcli connection modify` makes a change that sticks.
+  man: [nmcli(1), ip(8)]
+  cooldown: 3600
+  priority: 5
+- id: net-nmcli-nosudo
+  node: networking
+  lesson: net-03
+  when:
+    command: '^nmcli\s+(con|connection|dev|device)\s+(up|down|modify|add|delete|connect|disconnect|reapply)\b'
+    not_sudo: true
+  hint: >-
+    From a desktop session polkit lets you manage your own connections, but system-wide ones need `sudo nmcli`. `nmcli connection show` lists them either way.
+  man: [nmcli(1)]
+  cooldown: 3600
+- id: net-curl-resolve
+  node: networking
+  lesson: net-02
+  when:
+    command: '^curl\s+'
+    exit: [6]
+  hint: >-
+    curl exit 6 means the host name did not resolve. `resolvectl query name` tests DNS by itself; a typo in the URL is the other usual cause.
+  man: [curl(1), resolvectl(1)]
+  cooldown: 3600
+  priority: 5
+- id: net-curl-connect
+  node: networking
+  lesson: net-02
+  when:
+    command: '^curl\s+'
+    exit: [7]
+  hint: >-
+    curl exit 7 means the name resolved but nothing answered on that port. Check the service is listening (`ss -tlnp` on the target) and that its firewall allows the port.
+  man: [curl(1), ss(8), firewall-cmd(1)]
+  cooldown: 3600
+  priority: 5
+- id: net-curl-tls
+  node: networking
+  lesson: net-02
+  when:
+    command: '^curl\s+'
+    exit: [60]
+  hint: >-
+    curl exit 60 is a certificate it could not verify. Self-signed lab hosts do that; `curl -k` skips the check for a Range target, but never for a real site.
+  man: [curl(1)]
+  cooldown: 3600
+  priority: 5
+- id: net-telnet-missing
+  node: networking
+  lesson: net-02
+  when:
+    command: '^(telnet|nc|ncat|netcat)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is not in the image. `curl -v telnet://host:port` tests whether a port answers, and `ss -tlnp` shows what is listening locally.
+  man: [curl(1), ss(8)]
+  cooldown: 86400
+  priority: 10
+- id: net-traceroute-missing
+  node: networking
+  lesson: net-01
+  when:
+    command: '^(traceroute|mtr)\b'
+    exit: [127]
+    probe: no_command:{cmd}
+  hint: >-
+    `{cmd}` is not shipped, but `tracepath host` from iputils does the same walk without root.
+  man: [tracepath(8)]
+  cooldown: 86400
+  priority: 10
+- id: net-wget-missing
+  node: networking
+  lesson: net-02
+  when:
+    command: '^wget\b'
+    exit: [127]
+    probe: no_command:wget
+  hint: >-
+    `wget` is not in the image. `curl -LO url` downloads a file under its own name, and `curl -L -o name url` picks the name.
+  man: [curl(1)]
+  cooldown: 86400
+  priority: 10

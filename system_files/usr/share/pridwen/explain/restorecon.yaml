@@ -1,0 +1,9 @@
+command: restorecon
+node: selinux
+summary: Reset files to their expected SELinux context.
+man: restorecon(8)
+flags:
+  -R: Recurse through a directory tree.
+  -v: Print each label that is changed.
+  -n: Show what would change without changing it.
+  -F: Force a reset of the whole context, not just the type.

@@ -1,0 +1,205 @@
+# Coach rules: permissions (roots)
+# Mode bits, ownership, root-only paths, the read-only image.
+
+- id: perm-shadow-denied
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(cat|less|more|head|tail|vim?|nano|grep)\s+.*(?P<path>/etc/(shadow|gshadow|sudoers))\b'
+    not_sudo: true
+    probe: unreadable:{path}
+  hint: >-
+    `{path}` is readable only by root because it holds password hashes or the sudo policy.
+    `ls -l {path}` shows the owner and mode; `sudo cat {path}` reads it on purpose.
+  why: |
+    `/etc/passwd` is world-readable so tools can map ids to names, but the hashes moved to
+    `/etc/shadow` decades ago precisely so that ordinary users cannot read them.
+    Ways forward:
+      1. `sudo cat {path}`               read it as root, which the journal records
+      2. `getent shadow $USER`           the API way, still needs root
+      3. `ls -l /etc/passwd /etc/shadow` compare the two modes
+  man: [shadow(5), passwd(5), chmod(1)]
+  cooldown: 3600
+  priority: 15
+- id: perm-etc-write
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(vim?|nano|vi|tee|cp|mv|ln|touch|rm|sed\s+-i)\s+.*(?P<path>/etc/\S+)'
+    exit: any
+    not_sudo: true
+    probe: unwritable:{path}
+  hint: >-
+    `{path}` is owned by root, so you can read it but not save it as yourself.
+    `sudo -e {path}` edits a copy and installs it when you finish.
+  why: |
+    System configuration lives in `/etc` and is writable only by root. Your editor may let
+    you open the file, but the save will fail. `sudo -e` (sudoedit) copies the file, runs
+    your editor unprivileged, and writes the result back as root.
+    Ways forward:
+      1. `sudo -e {path}`                     the safe edit
+      2. `sudo cp {path} {path}.bak`          keep the original first
+      3. `ls -l {path}`                       see the owner and mode you ran into
+  man: [sudoedit(8), chmod(1)]
+  cooldown: 3600
+  priority: 12
+- id: perm-usr-readonly
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(sudo\s+)?(cp|mv|touch|rm|mkdir|vim?|nano|tee|ln|chmod|chown|sed\s+-i)\s+.*(?P<path>/usr/\S+)'
+    probe: ostree
+  hint: >-
+    `/usr` is part of the read-only image on Pridwen, so even root gets "Read-only file system" there.
+    Changes belong in the image build, `/etc`, `/var`, or your home.
+  why: |
+    Pridwen is image-based: `/usr` comes from a container image and is mounted read-only
+    so that every machine running the same version is byte-for-byte identical, and so
+    that `bootc rollback` always works. `/usr/local` is a link into `/var/usrlocal`,
+    which is writable.
+    Ways forward:
+      1. `~/.local/bin` or `/usr/local/bin`   for scripts and small tools
+      2. `/etc`                                for configuration overrides
+      3. `rpm-ostree install` / Flatpak / Distrobox   for packages
+      4. Containerfile in the Pridwen repo     to change the image itself
+  man: [bootc(8), rpm-ostree(1), hier(7)]
+  cooldown: 3600
+  priority: 20
+- id: perm-chmod-missing
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^(sudo\s+)?chmod\s+\S+\s+(?P<path>\S+)\s*$'
+    probe: missing:{path}
+  hint: >-
+    `{path}` does not exist from here, so there was nothing to change. Check the name with `ls` or Tab completion.
+  man: [chmod(1)]
+  cooldown: 3600
+  priority: 12
+- id: perm-chmod-not-owner
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^chmod\s+\S+\s+(?P<path>\S+)\s*$'
+    not_sudo: true
+    probe: exists:{path}
+  hint: >-
+    Only a file's owner or root may change its mode. `ls -l {path}` shows the owner; if it is root, `sudo chmod` is the tool.
+  why: |
+    Mode bits belong to the owner. Being able to write a file does not mean you may change
+    who can run it. That keeps a shared file from being made executable behind its owner's
+    back.
+    Ways forward:
+      1. `ls -l {path}`                 find the owner
+      2. `sudo chmod ... {path}`        as root, if it is a system file you are meant to change
+      3. `cp {path} ~/`                 work on your own copy instead
+  man: [chmod(1), chown(1)]
+  cooldown: 3600
+  priority: 5
+- id: perm-chown-not-root
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^chown\s+'
+    not_sudo: true
+  hint: >-
+    Giving a file to another user is a root-only operation on Linux, even for files you own. `sudo chown user:group file`.
+  why: |
+    If users could give files away, disk quotas and setuid checks would be trivial to
+    defeat. So the kernel restricts chown to CAP_CHOWN, which means root.
+    Ways forward:
+      1. `sudo chown nate:nate file`     set owner and group in one go
+      2. `chgrp group file`              you may change the group to one you belong to
+      3. `id`                            lists the groups you are in
+  man: [chown(1), chgrp(1), capabilities(7)]
+  cooldown: 3600
+- id: perm-chmod-777
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^(sudo\s+)?chmod\s+(-R\s+)?(a\+rwx|777|0777)\b'
+    exit: any
+  hint: >-
+    `777` lets every account on the machine write and run that file, which fixes the symptom and opens a hole.
+    Say what you need: `chmod 644` for data, `755` for a script, or `chown` it to the right user.
+  why: |
+    Mode 777 is the usual reflex when something says "Permission denied". It works, and
+    it also means any process running as any user, including a compromised service, can
+    replace the file. The right fix is almost always ownership, group membership, or a
+    narrower mode.
+    Ways forward:
+      1. `chmod u+x script.sh`             just the bit you needed
+      2. `sudo chown $USER file`           make it yours instead of everyone's
+      3. `chmod g+w file; chgrp team file` share through a group
+  man: [chmod(1), chown(1)]
+  cooldown: 3600
+  priority: 30
+- id: perm-var-log-denied
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(cat|less|more|head|tail|grep|vim?)\s+.*(?P<path>/var/log/\S+)'
+    not_sudo: true
+    probe: unreadable:{path}
+  hint: >-
+    Most files under `/var/log` are root-only. The journal is the front door: `journalctl` works for wheel members without sudo.
+  man: [journalctl(1)]
+  cooldown: 3600
+  priority: 10
+- id: perm-root-home
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(cd|ls|cat|less|find|tree)\s+.*(?P<path>/root(/\S*)?)\b'
+    not_sudo: true
+  hint: >-
+    `/root` is root's home and has mode 0700, so no other user can even list it. `sudo ls -la /root` if you need to look.
+  man: [hier(7)]
+  cooldown: 3600
+  priority: 10
+- id: perm-other-home
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(cd|ls|cat|less|find)\s+.*(?P<path>/home/[a-z_][a-z0-9_-]*)\b'
+    not_sudo: true
+    probe: unreadable:{path}
+  hint: >-
+    Home directories on Fedora are created with mode 0700, so `{path}` belongs to its owner alone.
+    `ls -ld {path}` shows that; root can still look.
+  man: [useradd(8), chmod(1)]
+  cooldown: 3600
+  priority: 8
+- id: perm-proc-sys-write
+  node: permissions
+  lesson: perm-02
+  when:
+    command: '^(echo|tee|printf)\b.*(?P<path>/(proc|sys)/\S+)'
+    not_sudo: true
+  hint: >-
+    `{path}` is a kernel setting, writable only by root. For `/proc/sys` the proper tool is `sudo sysctl -w`, with the persistent copy in `/etc/sysctl.d/`.
+  man: [sysctl(8), proc(5)]
+  cooldown: 3600
+  priority: 8
+- id: perm-chmod-first
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^chmod\s+'
+    exit: [0]
+  hint: >-
+    Mode changed. `ls -l` shows the result; `stat -c %a file` prints it as a number like 644.
+  man: [chmod(1), stat(1)]
+  cooldown: 604800
+  priority: -10
+- id: perm-umask-000
+  node: permissions
+  lesson: perm-03
+  when:
+    command: '^umask\s+0*(00[0-7]|0[0-7]0)\s*$'
+    exit: any
+  hint: >-
+    That umask makes every new file group- or world-writable for the rest of this shell. `umask 022` is the usual default, `077` the private one.
+  man: [umask(2), bash(1)]
+  cooldown: 3600
+  priority: 20

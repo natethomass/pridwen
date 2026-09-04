@@ -1,0 +1,114 @@
+# Coach rules: hardening (secure)
+# The Pridwen baseline as readable decisions: sysctl, USBGuard, DNS, auditd.
+
+- id: hard-sysctl-nosudo
+  node: hardening
+  lesson: hard-01
+  when:
+    command: '^sysctl\s+-w\b'
+    not_sudo: true
+  hint: >-
+    Writing a kernel tunable needs root: `sudo sysctl -w key=value`. `sysctl key` reads it without root, and the persistent copy belongs in `/etc/sysctl.d/`.
+  man: [sysctl(8)]
+  cooldown: 3600
+  priority: 5
+- id: hard-sysctl-not-persistent
+  node: hardening
+  lesson: hard-01
+  when:
+    command: '^sudo\s+sysctl\s+-w\s+(?P<kv>\S+)'
+    exit: [0]
+  hint: >-
+    That value lasts until reboot; to keep it, add `{kv}` to a file in `/etc/sysctl.d/` and run `sudo sysctl --system`. Pridwen ships its hardening values there already.
+  man: [sysctl(8), sysctl.d(5)]
+  cooldown: 86400
+  priority: -3
+- id: hard-sysctl-loosen
+  node: hardening
+  lesson: hard-01
+  when:
+    command: 'sysctl\s+-w\s+(kernel\.dmesg_restrict=0|kernel\.kptr_restrict=0|net\.ipv4\.ip_forward=1|kernel\.yama\.ptrace_scope=0|kernel\.unprivileged_bpf_disabled=0)'
+    exit: any
+  hint: >-
+    That setting undoes one of Pridwen's hardening defaults. Each one is a lesson: `pridwen learn hard-01` explains what it protects before you decide a lab needs it off.
+  man: [sysctl.d(5)]
+  cooldown: 3600
+  priority: 20
+- id: hard-usbguard-nosudo
+  node: hardening
+  lesson: hard-02
+  when:
+    command: '^usbguard\b'
+    not_sudo: true
+  hint: >-
+    USBGuard's controls need root: `sudo usbguard list-devices`. Pridwen ships it in learning mode, so new devices are allowed and recorded, not blocked, until you write a policy.
+  man: [usbguard(1)]
+  cooldown: 3600
+  priority: 5
+- id: hard-auditctl-nosudo
+  node: hardening
+  lesson: hard-03
+  when:
+    command: '^auditctl\b'
+    not_sudo: true
+  hint: >-
+    The audit subsystem is root-only: `sudo auditctl -l` lists the active rules. Persistent rules live in `/etc/audit/rules.d/` and load at boot.
+  man: [auditctl(8), audit.rules(7)]
+  cooldown: 3600
+  priority: 5
+- id: hard-passwd-policy
+  node: hardening
+  lesson: hard-03
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/security/pwquality\.conf)'
+    exit: any
+  hint: >-
+    `{path}` sets the minimum length and complexity every new password must meet. Loosening it weakens every account at once, so change it on a lab, not a daily machine.
+  man: [pwquality.conf(5), pam_pwquality(8)]
+  cooldown: 86400
+  priority: 10
+- id: hard-faillock
+  node: hardening
+  lesson: hard-03
+  when:
+    command: '^(sudo\s+)?faillock\b'
+    exit: any
+  hint: >-
+    `faillock` shows and clears failed-login counters. `sudo faillock --user name --reset` unlocks an account that hit the retry limit after a fat-fingered password.
+  man: [faillock(8), pam_faillock(8)]
+  cooldown: 86400
+  priority: 5
+- id: hard-aide-missing
+  node: hardening
+  lesson: hard-02
+  when:
+    command: '^(sudo\s+)?aide\b'
+    exit: [127]
+    probe: no_command:aide
+  hint: >-
+    AIDE is not in the base image; on an immutable host `/usr` cannot change between boots anyway, which is a form of the same guarantee. `rpm-ostree db diff` shows what the image contains.
+  man: [rpm-ostree(1)]
+  cooldown: 86400
+  priority: 10
+- id: hard-selinux-relabel-flag
+  node: hardening
+  lesson: hard-01
+  when:
+    command: '(?P<path>/\.autorelabel)\b'
+    exit: any
+  hint: >-
+    Touching `/.autorelabel` forces a full SELinux relabel on the next boot, which is slow but sometimes the cleanest fix after labels drift. `sudo restorecon -Rv path` handles a single tree faster.
+  man: [restorecon(8), fixfiles(8)]
+  cooldown: 86400
+  priority: 5
+- id: hard-chronyd
+  node: hardening
+  lesson: hard-03
+  when:
+    command: '^(sudo\s+)?(date|timedatectl)\s+set'
+    exit: any
+  hint: >-
+    Setting the clock by hand fights chrony, which keeps it in sync with network time; auditing and TLS both depend on an accurate clock. `timedatectl` shows whether NTP is active.
+  man: [timedatectl(1), chronyd(8)]
+  cooldown: 86400
+  priority: 5

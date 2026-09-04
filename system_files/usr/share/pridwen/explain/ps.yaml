@@ -1,0 +1,11 @@
+command: ps
+node: processes
+summary: Report a snapshot of current processes.
+man: ps(1)
+flags:
+  aux: Show every process with user, resource use, and command.
+  -e: Select every process.
+  -f: Show a full-format listing.
+  -o: Choose which columns to show.
+  --sort: Sort by a field, such as -%mem for descending memory.
+  -u: Select processes for a given user.

@@ -1,0 +1,14 @@
+command: ls
+node: files
+summary: List directory contents.
+man: ls(1)
+flags:
+  -l: 'Long listing: type and mode, links, owner, group, size, modification time,
+    and name.'
+  -a: Include entries whose names start with a dot.
+  -h: With -l, print sizes in human units like K and M.
+  -t: Sort by modification time, newest first.
+  -r: Reverse the sort order.
+  -R: List subdirectories recursively.
+  -d: List a directory itself rather than its contents.
+  -Z: Show each file's SELinux security context.

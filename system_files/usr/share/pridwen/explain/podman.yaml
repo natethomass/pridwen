@@ -1,0 +1,12 @@
+command: podman
+node: containers
+summary: Manage rootless containers and images.
+man: podman(1)
+flags:
+  run: Create and start a container from an image.
+  ps: List containers; add -a to include stopped ones.
+  images: List local images.
+  build: Build an image from a Containerfile.
+  pull: Fetch an image from a registry.
+  -v: Bind mount a volume, with :Z or :z for SELinux labelling.
+  --rm: Remove the container when it exits.

@@ -1,0 +1,8 @@
+command: mkdir
+node: files
+summary: Create directories.
+man: mkdir(1)
+flags:
+  -p: Create parent directories as needed and treat an existing target as success.
+  -m: Set the mode of the new directory, as in -m 700.
+  -v: Print a message for each directory created.

@@ -1,0 +1,117 @@
+# Coach rules: storage (operate)
+# lsblk, df, du, mount, fstab, LUKS, destructive tools.
+
+- id: store-mount-nosudo
+  node: storage
+  lesson: store-02
+  when:
+    command: '^mount\s+\S+'
+    not_sudo: true
+  hint: >-
+    `mount` needs root unless `/etc/fstab` marks the entry `user`. For a USB stick, `udisksctl mount -b /dev/sdX1` mounts it as you, the same way GNOME Files does.
+  why: |
+    Mounting changes the namespace every process sees, so it is a root operation. The
+    desktop gets around that through udisks, which mounts removable media under
+    `/run/media/$USER/` on your behalf and asks polkit for permission.
+    Ways forward:
+      1. `lsblk -f`                                     find the device and filesystem
+      2. `udisksctl mount -b /dev/sdb1`                 as your user, no sudo
+      3. `sudo mount /dev/sdb1 /mnt`                    the manual way, until reboot
+  man: [mount(8), udisksctl(1), fstab(5)]
+  cooldown: 3600
+  priority: 5
+- id: store-umount-busy
+  node: storage
+  lesson: store-02
+  when:
+    command: '^(sudo\s+)?umount\s+(?P<path>\S+)\s*$'
+    exit: [32]
+  hint: >-
+    "Target is busy" means a process still has a file or its current directory under {path}. `fuser -vm {path}` names it; a shell that did `cd` there counts.
+  man: [umount(8), fuser(1)]
+  cooldown: 3600
+  priority: 8
+- id: store-du-root
+  node: storage
+  lesson: store-03
+  when:
+    command: '^(sudo\s+)?du\s+(-\S+\s+)*/\s*$'
+    exit: any
+  hint: >-
+    `du` from `/` walks every file, including `/proc` and the read-only image. `sudo du -xsh /var/* /home/* 2>/dev/null | sort -h` finds where the space actually went.
+  man: [du(1), sort(1)]
+  cooldown: 86400
+  priority: 10
+- id: store-du-denied
+  node: storage
+  lesson: store-03
+  when:
+    command: '^du\s+'
+    exit: [1]
+    not_sudo: true
+  hint: >-
+    `du` exits 1 when some directories were closed to you, but the totals for what it could read are fine. Append `2>/dev/null` to hide the noise, or `sudo du` for the full picture.
+  man: [du(1)]
+  cooldown: 3600
+- id: store-disk-tools-nosudo
+  node: storage
+  lesson: store-01
+  when:
+    command: '^(fdisk|sfdisk|gdisk|cfdisk|parted|mkfs\S*|wipefs|cryptsetup|blkid|smartctl)\b'
+    not_sudo: true
+  hint: >-
+    `{cmd}` talks to block devices directly, which needs root. Look first with `lsblk -f`, which does not; then `sudo {cmd}` when you mean it.
+  man: [lsblk(8), fdisk(8)]
+  cooldown: 3600
+  priority: 5
+- id: store-mkfs-warning
+  node: storage
+  lesson: store-02
+  when:
+    command: '^sudo\s+mkfs\S*\s+.*(?P<dev>/dev/\S+)'
+    exit: any
+  hint: >-
+    `mkfs` erases everything on {dev}. Before the next one, `lsblk -f {dev}` to confirm it is the device you think and that nothing is mounted from it.
+  man: [mkfs(8), lsblk(8)]
+  cooldown: 86400
+  priority: 30
+- id: store-dd-device
+  node: storage
+  lesson: store-01
+  when:
+    command: '^(sudo\s+)?dd\s+.*of=(?P<dev>/dev/\S+)'
+    exit: any
+  hint: >-
+    `dd` writes straight over {dev} with no confirmation. Check `lsblk` twice before using it on a disk, and prefer GNOME Disks or `podman` volumes for anything that is not an installer image.
+  man: [dd(1), lsblk(8)]
+  cooldown: 86400
+  priority: 40
+- id: store-fstab-edited
+  node: storage
+  lesson: store-02
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i|cp)\s+.*(?P<path>/etc/fstab)\b'
+    exit: [0]
+  hint: >-
+    A bad line in `/etc/fstab` drops the next boot into emergency mode. `sudo findmnt --verify` checks the syntax and `sudo mount -a` tries every entry now, while you can still fix it.
+  why: |
+    systemd turns each fstab line into a mount unit and waits for it at boot. A typo or a
+    missing device means a failed unit and an emergency shell. Testing now is cheap.
+    Ways forward:
+      1. `sudo findmnt --verify`               syntax and device check
+      2. `sudo mount -a`                       mount everything not yet mounted
+      3. add `nofail` to optional drives       so their absence does not block boot
+  man: [fstab(5), findmnt(8), mount(8)]
+  cooldown: 3600
+  priority: 10
+- id: store-fsck-mounted
+  node: storage
+  lesson: store-02
+  when:
+    command: '^(sudo\s+)?(fsck\S*|btrfs\s+check)\s+.*(?P<dev>/dev/\S+)'
+    exit: any
+  hint: >-
+    Never run a filesystem check on something that is mounted; it can make things worse. `findmnt {dev}` tells you, and btrfs prefers `btrfs scrub start /` while mounted anyway.
+  man: [fsck(8), btrfs-check(8), btrfs-scrub(8)]
+  cooldown: 86400
+  priority: 25

@@ -1,0 +1,137 @@
+# Coach rules: firewall (secure)
+# firewalld, the drop zone, runtime versus permanent, old tools.
+
+- id: fw-nosudo
+  node: firewall
+  lesson: fw-01
+  when:
+    command: '^firewall-cmd\b'
+    not_sudo: true
+  hint: >-
+    `firewall-cmd` talks to firewalld over D-Bus and polkit refuses non-root callers, even for reads. `sudo firewall-cmd --list-all` shows the active zone.
+  man: [firewall-cmd(1)]
+  cooldown: 3600
+  priority: 5
+- id: fw-add-runtime-only
+  node: firewall
+  lesson: fw-02
+  when:
+    command: '^sudo\s+firewall-cmd\s+(?!.*--permanent).*--add-(port|service|source|rich-rule)\b'
+    exit: [0]
+  hint: >-
+    That change is runtime only and disappears at the next reload or reboot. `sudo firewall-cmd --runtime-to-permanent` keeps it, or repeat the command with `--permanent`.
+  why: |
+    firewalld keeps two configurations: runtime (what the kernel has now) and permanent
+    (files under `/etc/firewalld/`). A runtime change is a good way to test; making it
+    permanent is a separate step so a mistake does not survive a reboot.
+    Ways forward:
+      1. `sudo firewall-cmd --runtime-to-permanent`     save what is live
+      2. `sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload`
+      3. `sudo firewall-cmd --list-all --permanent`     what will be there after reboot
+  man: [firewall-cmd(1)]
+  cooldown: 86400
+  priority: -2
+- id: fw-permanent-no-reload
+  node: firewall
+  lesson: fw-02
+  when:
+    command: '^sudo\s+firewall-cmd\s+.*--permanent.*--(add|remove)-'
+    exit: [0]
+  hint: >-
+    Permanent changes are written to disk but not applied until `sudo firewall-cmd --reload`. Until then `--list-all` still shows the old runtime rules.
+  man: [firewall-cmd(1)]
+  cooldown: 86400
+  priority: -2
+- id: fw-iptables
+  node: firewall
+  lesson: fw-03
+  when:
+    command: '^(sudo\s+)?(iptables|ip6tables|iptables-save|iptables-restore)\b'
+    exit: any
+  hint: >-
+    firewalld owns the nftables ruleset here, and hand-written iptables rules are ignored or overwritten at the next reload. `sudo nft list ruleset` shows the truth; `firewall-cmd` changes it.
+  man: [firewall-cmd(1), nft(8)]
+  cooldown: 86400
+  priority: 20
+- id: fw-ufw
+  node: firewall
+  lesson: fw-01
+  when:
+    command: '^(sudo\s+)?ufw\b'
+    exit: any
+  hint: >-
+    `ufw` is Ubuntu's front end. On Fedora the front end is `firewall-cmd`; `sudo firewall-cmd --add-service=ssh --permanent` is the shape of an allow rule.
+  man: [firewall-cmd(1)]
+  cooldown: 86400
+  priority: 20
+- id: fw-bad-zone
+  node: firewall
+  lesson: fw-01
+  when:
+    command: '^sudo\s+firewall-cmd\s+.*--zone=(?P<zone>\S+)'
+  hint: >-
+    If firewalld said INVALID_ZONE, `{zone}` is not one of its zones. `sudo firewall-cmd --get-zones` lists them; Pridwen's active one is `drop`.
+  man: [firewall-cmd(1), firewalld.zones(5)]
+  cooldown: 3600
+  priority: 5
+- id: fw-bad-service
+  node: firewall
+  lesson: fw-02
+  when:
+    command: '^sudo\s+firewall-cmd\s+.*--add-service=(?P<name>\S+)'
+  hint: >-
+    INVALID_SERVICE means firewalld has no definition named `{name}`. `sudo firewall-cmd --get-services` lists them; for anything else use `--add-port=8080/tcp`.
+  man: [firewall-cmd(1), firewalld.service(5)]
+  cooldown: 3600
+  priority: 5
+- id: fw-stop-firewalld
+  node: firewall
+  lesson: fw-01
+  when:
+    command: '^sudo\s+systemctl\s+(stop|disable|mask)\s+(--now\s+)?firewalld\b'
+    exit: any
+  hint: >-
+    Stopping firewalld opens every listening port to the network at once. If one service is unreachable, open only its port: `sudo firewall-cmd --add-port=8080/tcp`.
+  why: |
+    The drop zone is what makes it safe to run a test web server or sshd on a laptop
+    that joins coffee-shop networks. Without it, every socket in `ss -tlnp` is reachable
+    by whoever shares the network.
+    Ways forward:
+      1. `sudo systemctl start firewalld`                       back on
+      2. `sudo firewall-cmd --add-port=8080/tcp`                the one hole you need, runtime
+      3. `sudo firewall-cmd --add-source=192.168.1.0/24 --zone=trusted`   trust one network
+  man: [firewalld(1), firewall-cmd(1)]
+  cooldown: 3600
+  priority: 40
+- id: fw-panic
+  node: firewall
+  lesson: fw-03
+  when:
+    command: '^sudo\s+firewall-cmd\s+--panic-on\b'
+    exit: any
+  hint: >-
+    Panic mode drops every packet in both directions, including an SSH session you may be sitting in. `sudo firewall-cmd --panic-off` restores the zone rules.
+  man: [firewall-cmd(1)]
+  cooldown: 3600
+  priority: 50
+- id: fw-nft-nosudo
+  node: firewall
+  lesson: fw-03
+  when:
+    command: '^nft\b'
+    not_sudo: true
+  hint: >-
+    The nftables ruleset is readable only by root: `sudo nft list ruleset`. It is what firewalld generated from the zones.
+  man: [nft(8)]
+  cooldown: 3600
+  priority: 5
+- id: fw-add-port-notation
+  node: firewall
+  lesson: fw-02
+  when:
+    command: '^sudo\s+firewall-cmd\s+.*--add-port=(?P<port>\d+)\s*$'
+  hint: >-
+    A port needs its protocol: `--add-port={port}/tcp` or `{port}/udp`. A range is written `8000-8100/tcp`.
+  man: [firewall-cmd(1)]
+  cooldown: 3600
+  priority: 8

@@ -1,0 +1,26 @@
+# Coach rules: forensics (defend)
+# Lab targets only. Timestamps, hashes, imaging.
+
+- id: forensics-find-newer
+  node: forensics
+  lesson: forensics-01
+  when:
+    command: '^(sudo\s+)?find\s+.*-(newer|mmin|mtime|cmin|ctime)\b'
+    exit: [0]
+  hint: >-
+    Time-based `find` is the fastest timeline: `-cmin -60` for metadata changed in the last hour catches things `-mmin` misses when timestamps were reset.
+  man: [find(1)]
+  cooldown: 604800
+  priority: -10
+
+- id: forensics-dd-image
+  node: forensics
+  lesson: forensics-03
+  when:
+    command: '^sudo\s+dd\s+if=(?P<dev>/dev/\S+)\s+.*of=\S+'
+    exit: [0]
+  hint: >-
+    Hash the image and the source the same way (`sha256sum`) so you can show they match. `conv=noerror,sync` and `status=progress` are the flags for the next one; a read-only source is safer still.
+  man: [dd(1), sha256sum(1)]
+  cooldown: 86400
+  priority: -5

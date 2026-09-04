@@ -1,0 +1,161 @@
+# Coach rules: users (roots)
+# Accounts, groups, passwords, switching identity.
+
+- id: user-admin-nosudo
+  node: users
+  lesson: user-02
+  when:
+    command: '^(useradd|adduser|userdel|usermod|groupadd|groupdel|groupmod|gpasswd|chage)\b'
+    not_sudo: true
+  hint: >-
+    Account changes write to `/etc/passwd`, `/etc/shadow` and `/etc/group`, which only root may edit. `sudo {cmd} ...` is the form.
+  why: |
+    Creating or changing users touches the files that define who exists on the machine.
+    Those are root-owned by design, so the tools refuse without root.
+    Ways forward:
+      1. `sudo useradd -m -c "Full Name" name`   create with a home directory
+      2. `sudo passwd name`                       give it a password
+      3. `id name`                                confirm it exists (no root needed)
+  man: [useradd(8), usermod(8), passwd(1)]
+  cooldown: 3600
+  priority: 10
+- id: user-useradd-first
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+useradd\s+.*(?P<name>[a-z_][a-z0-9_-]*)\s*$'
+    exit: [0]
+  hint: >-
+    `{name}` exists but has no password yet, so nobody can log in as them. `sudo passwd {name}` sets one; `id {name}` shows uid and groups.
+  man: [useradd(8), passwd(1), id(1)]
+  cooldown: 86400
+  priority: -5
+- id: user-useradd-no-home
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+useradd\s+(?!.*(\s-m\b|--create-home))'
+    exit: [0]
+  hint: >-
+    Fedora's `useradd` creates a home directory by default (`CREATE_HOME yes` in `/etc/login.defs`), but `-m` says so explicitly and works everywhere.
+  man: [useradd(8), login.defs(5)]
+  cooldown: 86400
+  priority: -6
+- id: user-useradd-exists
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+useradd\s+.*(?P<name>[a-z_][a-z0-9_-]*)\s*$'
+    exit: [9]
+  hint: >-
+    Exit 9 from `useradd` means `{name}` already exists. `getent passwd {name}` shows the current entry; `usermod` changes it.
+  man: [useradd(8), usermod(8), getent(1)]
+  cooldown: 3600
+  priority: 5
+- id: user-passwd-other
+  node: users
+  lesson: user-03
+  when:
+    command: '^passwd\s+(?P<name>[a-z_][a-z0-9_-]*)\s*$'
+    not_sudo: true
+  hint: >-
+    Only root can set another user's password. `passwd` alone changes yours; `sudo passwd {name}` changes theirs.
+  man: [passwd(1)]
+  cooldown: 3600
+  priority: 10
+- id: user-su-root
+  node: users
+  lesson: user-03
+  when:
+    command: '^su\s*(-|-l|--login)?\s*$'
+    exit: any
+  hint: >-
+    Pridwen keeps the root account locked, so `su` has no password to accept. `sudo -i` opens a root shell using your own password and logs it.
+  why: |
+    A locked root account means there is no shared secret to guess, phish or reuse. Every
+    privileged action goes through sudo under a named user, and the journal records who
+    did what.
+    Ways forward:
+      1. `sudo -i`                  a login shell as root
+      2. `sudo command`             one command, which is usually enough
+      3. `sudo -l`                  see what you are allowed to do
+  man: [su(1), sudo(8)]
+  cooldown: 3600
+  priority: 20
+- id: user-su-other
+  node: users
+  lesson: user-03
+  when:
+    command: '^su\s+(-\s+|-l\s+)?(?P<name>[a-z_][a-z0-9_-]*)\s*$'
+  hint: >-
+    `su {name}` asks for that user's password. `sudo -u {name} -i` gets you the same shell with your own password, and is recorded.
+  man: [su(1), sudo(8)]
+  cooldown: 3600
+  priority: 10
+- id: user-usermod-g-no-append
+  node: users
+  lesson: user-02
+  when:
+    command: '^(sudo\s+)?usermod\s+(?!.*(?:\s-a[A-Za-z]*\b|--append)).*(?:\s-G\s|--groups)'
+    exit: any
+  hint: >-
+    `-G` without `-a` replaces every supplementary group, so the user may have just lost wheel.
+    `usermod -aG group user` appends; `id user` shows the result.
+  man: [usermod(8), id(1)]
+  cooldown: 3600
+  priority: 30
+- id: user-wheel-added
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+usermod\s+.*-aG?\s*wheel\b'
+    exit: [0]
+  hint: >-
+    Wheel membership applies to new logins, so the user needs to log out and back in before `sudo` accepts them. `id user` confirms it.
+  man: [usermod(8), sudoers(5)]
+  cooldown: 86400
+  priority: -5
+- id: user-passwd-root
+  node: users
+  lesson: user-03
+  when:
+    command: '^sudo\s+passwd(\s+root)?\s*$'
+    exit: any
+  hint: >-
+    Setting a root password unlocks direct root login, which Pridwen leaves off on purpose. `sudo -i` covers the same need; `sudo passwd -l root` locks it again.
+  man: [passwd(1), sudo(8)]
+  cooldown: 3600
+  priority: 25
+- id: user-passwd-delete
+  node: users
+  lesson: user-03
+  when:
+    command: '^(sudo\s+)?passwd\s+(-d|--delete)\b'
+    exit: any
+  hint: >-
+    `passwd -d` removes the password entirely, so that account logs in with nothing. `passwd -l` locks it instead.
+  man: [passwd(1)]
+  cooldown: 3600
+  priority: 30
+- id: user-userdel-keep-home
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+userdel\s+(?!-r)(?P<name>[a-z_][a-z0-9_-]*)\s*$'
+    exit: [0]
+  hint: >-
+    The account is gone but `/home/{name}` is still on disk, owned by a uid that no longer has a name. `userdel -r` removes both; `sudo ls -ln /home` shows orphaned owners as numbers.
+  man: [userdel(8)]
+  cooldown: 86400
+  priority: -5
+- id: user-userdel-logged-in
+  node: users
+  lesson: user-02
+  when:
+    command: '^sudo\s+userdel\b'
+    exit: [8]
+  hint: >-
+    Exit 8 means the user is still logged in. `loginctl list-sessions` shows them; `sudo loginctl terminate-user name` ends the session first.
+  man: [userdel(8), loginctl(1)]
+  cooldown: 3600
+  priority: 5

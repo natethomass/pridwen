@@ -1,0 +1,12 @@
+command: tar
+node: files
+summary: Create and extract archive files.
+man: tar(1)
+flags:
+  -c: Create a new archive.
+  -x: Extract files from an archive.
+  -t: List the contents of an archive.
+  -f: Name the archive file, which must be the last letter in a cluster.
+  -z: Filter the archive through gzip.
+  -v: List files as they are processed.
+  -C: Change to a directory before working.

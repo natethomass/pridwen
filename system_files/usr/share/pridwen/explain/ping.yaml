@@ -1,0 +1,10 @@
+command: ping
+node: networking
+summary: Test reachability with ICMP echo.
+man: ping(8)
+flags:
+  -c: Stop after sending a given number of packets.
+  -i: Set the interval in seconds between packets.
+  -W: Set how long to wait for a reply.
+  '-4': Force IPv4.
+  '-6': Force IPv6.

@@ -1,0 +1,10 @@
+command: less
+node: files
+summary: View text one screen at a time.
+man: less(1)
+flags:
+  -N: Show line numbers in the left margin.
+  -S: Chop long lines instead of wrapping them.
+  -i: Make searches case-insensitive unless the pattern has capitals.
+  -F: Quit immediately if the content fits on one screen.
+  +F: Follow the file as it grows, like tail -f.

@@ -121,7 +121,9 @@ def explain(command_line, library=None):
     manopts = None
     for flag, val in split_flags(tokens[1:]):
         if val == "arg":
-            rows.append(("arg", flag, ""))
+            # Subcommand-shaped tools (systemctl, podman, ip ...) curate their verbs too.
+            sub = (cur or {}).get("_flags", {}).get(flag)
+            rows.append(("flag", flag, sub) if sub else ("arg", flag, ""))
             continue
         textv = (cur or {}).get("_flags", {}).get(flag)
         if textv is None:

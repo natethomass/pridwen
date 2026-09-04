@@ -1,0 +1,12 @@
+command: find
+node: files
+summary: Search a directory tree for files.
+man: find(1)
+flags:
+  -name: Match the file name against a shell pattern, which should be quoted.
+  -type: Match a type, such as f for file or d for directory.
+  -mtime: Match by modification age in days.
+  -newermt: Match files modified after a given timestamp.
+  -perm: Match by permission bits, such as -4000 for setuid.
+  -exec: Run a command on each match, ending the command with a semicolon.
+  -printf: Print selected fields in a chosen format.

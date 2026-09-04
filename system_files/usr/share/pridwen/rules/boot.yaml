@@ -1,0 +1,114 @@
+# Coach rules: boot (operate)
+# GRUB, initramfs, deployments, kernel arguments, reboot.
+
+- id: boot-grub-tools
+  node: boot
+  lesson: boot-03
+  when:
+    command: '^(sudo\s+)?(grub2?-mkconfig|update-grub|grub2?-install|grubby)\b'
+    exit: any
+    probe: ostree
+  hint: >-
+    On a bootc system the boot entries are generated from the deployment, so `{cmd}` is not the tool. Kernel arguments change with `rpm-ostree kargs`; the bootloader itself is updated with `bootc`.
+  why: |
+    Each deployment gets its own Boot Loader Specification entry under `/boot/loader/entries`,
+    written when the image is staged. Editing GRUB by hand is overwritten at the next
+    update; kargs are stored with the deployment and survive it.
+    Ways forward:
+      1. `rpm-ostree kargs`                              show the current arguments
+      2. `sudo rpm-ostree kargs --append=quiet`          add one, effective next boot
+      3. `sudo rpm-ostree kargs --delete=quiet`          remove one
+  man: [rpm-ostree(1), bootc(8)]
+  cooldown: 86400
+  priority: 30
+- id: boot-kargs-changed
+  node: boot
+  lesson: boot-03
+  when:
+    command: '^sudo\s+rpm-ostree\s+kargs\s+.*--(append|delete|replace)'
+    exit: [0]
+  hint: >-
+    The new kernel arguments belong to a fresh deployment and apply at the next boot. `rpm-ostree kargs` shows them; `cat /proc/cmdline` shows what this boot actually used.
+  man: [rpm-ostree(1)]
+  cooldown: 86400
+  priority: -5
+- id: boot-dracut
+  node: boot
+  lesson: boot-01
+  when:
+    command: '^(sudo\s+)?dracut\b'
+    exit: any
+    probe: ostree
+  hint: >-
+    Pridwen's initramfs is built into the image, so a `dracut` run on the host is replaced by the next update. Changes go into the Containerfile, where the build already runs dracut.
+  man: [dracut(8), bootc(8)]
+  cooldown: 86400
+  priority: 20
+- id: boot-plymouth-theme
+  node: boot
+  lesson: boot-01
+  when:
+    command: '^(sudo\s+)?plymouth-set-default-theme\b'
+    exit: any
+  hint: >-
+    The Plymouth theme lives inside the initramfs, which is part of the image. Setting it here does not survive an update; the `pridwen` theme is set at build time.
+  man: [plymouth(8)]
+  cooldown: 86400
+  priority: 20
+- id: boot-reboot-nosudo
+  node: boot
+  lesson: boot-01
+  when:
+    command: '^(reboot|shutdown|poweroff|halt)\b'
+    not_sudo: true
+  hint: >-
+    From a remote or non-graphical session polkit will not let you reboot without root: `sudo systemctl reboot`. In your own desktop session `systemctl reboot` works as is.
+  man: [systemctl(1), polkit(8)]
+  cooldown: 3600
+- id: boot-etc-default-grub
+  node: boot
+  lesson: boot-03
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/default/grub)\b'
+    exit: any
+    probe: ostree
+  hint: >-
+    Editing `{path}` changes nothing on a bootc system because no tool regenerates GRUB from it here. `sudo rpm-ostree kargs --append=...` is how kernel arguments are set.
+  man: [rpm-ostree(1)]
+  cooldown: 86400
+  priority: 20
+- id: boot-efibootmgr-nosudo
+  node: boot
+  lesson: boot-01
+  when:
+    command: '^efibootmgr\b'
+    not_sudo: true
+  hint: >-
+    Firmware boot entries live in NVRAM, which only root may read or change: `sudo efibootmgr -v`.
+  man: [efibootmgr(8)]
+  cooldown: 3600
+
+- id: boot-set-default-target
+  node: boot
+  lesson: boot-01
+  when:
+    command: '^(sudo\s+)?systemctl\s+set-default\s+(?P<target>\S+)'
+    exit: any
+  hint: >-
+    `systemctl set-default` changes what the machine boots into; `graphical.target` is the desktop and `multi-user.target` is text only. `systemctl get-default` shows the current one.
+  man: [systemd.special(7), systemctl(1)]
+  cooldown: 86400
+  priority: 5
+
+- id: boot-loader-entries-edit
+  node: boot
+  lesson: boot-03
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/boot/loader/entries/\S+)'
+    exit: any
+    probe: ostree
+  hint: >-
+    Boot loader entries under `/boot/loader/entries` are generated per deployment, so hand edits are overwritten at the next update. Change kernel arguments with `sudo rpm-ostree kargs` instead.
+  man: [rpm-ostree(1), bootc(8)]
+  cooldown: 86400
+  priority: 15

@@ -1,0 +1,105 @@
+# Coach rules: sudo (secure)
+# wheel, sudo -i, redirection, sudoers, the audit trail.
+
+- id: sudo-exit-1
+  node: sudo
+  lesson: sudo-01
+  when:
+    command: '^sudo\s+'
+    exit: [1]
+  hint: >-
+    sudo exited 1: either the command it ran failed with 1, the password was wrong three times, or your user is not in `wheel`. `id` shows your groups and `sudo -l` shows what you may run.
+  why: |
+    sudo passes through the exit code of the command it ran, so 1 usually belongs to the
+    command. sudo's own refusals also exit 1: a user who is not in sudoers, or three bad
+    passwords. Every attempt, allowed or not, lands in the journal.
+    Ways forward:
+      1. `id`                          are you in wheel
+      2. `sudo -l`                     what sudo allows for you
+      3. `journalctl _COMM=sudo -n 5`  what it recorded (wheel members can read this)
+  man: [sudo(8), sudoers(5)]
+  cooldown: 3600
+  priority: -5
+- id: sudo-first
+  node: sudo
+  lesson: sudo-01
+  when:
+    command: '^sudo\s+\S'
+    exit: [0]
+  hint: >-
+    That was your first sudo. It ran as root because you are in `wheel`, cached your password for five minutes, and wrote a line to the journal: `journalctl _COMM=sudo -n 3`.
+  man: [sudo(8), sudoers(5)]
+  cooldown: 604800
+  priority: -10
+- id: sudo-su
+  node: sudo
+  lesson: sudo-02
+  when:
+    command: '^sudo\s+su\b'
+    exit: any
+  hint: >-
+    `sudo su` works but takes a detour through `su`. `sudo -i` gives the same root login shell directly, with root's environment and a single journal entry.
+  man: [sudo(8), su(1)]
+  cooldown: 86400
+  priority: 20
+- id: sudo-redirect
+  node: sudo
+  lesson: sudo-02
+  when:
+    command: '^sudo\s+\S+.*\s>>?\s*(?P<path>/(etc|usr|var|boot|root)\S*)'
+  hint: >-
+    The `>` is done by your shell, not by sudo, so the file is opened as you. `... | sudo tee {path}` writes it as root, or `sudo -e {path}` to edit.
+  why: |
+    Redirections are set up by the shell before the command runs. sudo only elevates the
+    command word and its arguments, so the write to `{path}` happens with your uid.
+    Ways forward:
+      1. `echo text | sudo tee {path}`          replace the file as root
+      2. `echo text | sudo tee -a {path}`       append
+      3. `sudo sh -c 'echo text > {path}'`      run the whole pipeline as root
+  man: [sudo(8), tee(1), bash(1)]
+  cooldown: 3600
+  priority: 25
+- id: sudo-cd
+  node: sudo
+  lesson: sudo-02
+  when:
+    command: '^sudo\s+(cd|export|alias|source|unset|history)\b'
+    exit: any
+  hint: >-
+    `{cmd}` is a shell builtin, so there is no program for sudo to run and it cannot change your shell's state. `sudo -i` gives a root shell where builtins work; `sudo ls /root` covers a quick look.
+  man: [sudo(8), bash(1)]
+  cooldown: 3600
+  priority: 20
+- id: sudo-visudo
+  node: sudo
+  lesson: sudo-02
+  when:
+    command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/sudoers(\.d/\S+)?)\b'
+    exit: any
+  hint: >-
+    A syntax error in sudoers locks everyone out of sudo. `sudo visudo` (or `sudo visudo -f {path}`) checks the file before saving it.
+  man: [visudo(8), sudoers(5)]
+  cooldown: 3600
+  priority: 30
+- id: sudo-nopasswd
+  node: sudo
+  lesson: sudo-02
+  when:
+    command: 'NOPASSWD'
+    exit: any
+  hint: >-
+    `NOPASSWD` means anyone who gets a shell as that user is root without a prompt. Keep it to a single command if you must, and never for ALL on a laptop.
+  man: [sudoers(5)]
+  cooldown: 3600
+  priority: 30
+- id: sudo-sudo
+  node: sudo
+  lesson: sudo-01
+  when:
+    command: '^sudo\s+sudo\b'
+    exit: any
+  hint: >-
+    One `sudo` is enough; the second one runs as root and does nothing extra.
+  man: [sudo(8)]
+  cooldown: 86400
+  priority: 10

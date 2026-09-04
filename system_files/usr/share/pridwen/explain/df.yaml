@@ -1,0 +1,9 @@
+command: df
+node: storage
+summary: Report filesystem disk space usage.
+man: df(1)
+flags:
+  -h: Print sizes in human units like G and M.
+  -T: Show each filesystem's type.
+  -i: Report inode usage instead of block usage.
+  -x: Exclude filesystems of a given type.

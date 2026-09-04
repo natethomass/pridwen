@@ -1,0 +1,13 @@
+# Coach rules: incident-response (defend)
+# First-hour habits. Lab targets only.
+
+- id: ir-preserve-before-reboot
+  node: incident-response
+  lesson: ir-02
+  when:
+    command: '^(sudo\s+)?(reboot|poweroff|shutdown)\b'
+  hint: >-
+    A reboot clears memory, running processes and open sockets, which on a Range host under investigation are your evidence. Capture `ps`, `ss` and the journal first.
+  man: [journalctl(1), ss(8)]
+  cooldown: 3600
+  priority: 15

@@ -1,0 +1,9 @@
+command: chmod
+node: permissions
+summary: Change file mode bits.
+man: chmod(1)
+flags:
+  -R: Change modes recursively through a directory tree.
+  -v: Report the change made to every file.
+  -c: Report only files whose mode actually changed.
+  --reference: Copy the mode from a named reference file.

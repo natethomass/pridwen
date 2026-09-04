@@ -1,0 +1,240 @@
+# Coach rules: files (roots)
+# Listing, reading, copying, moving, removing, finding, archiving.
+
+- id: file-rm-root
+  node: files
+  lesson: file-02
+  when:
+    command: '^(sudo\s+)?rm\s+(-[A-Za-z]+\s+)*(--no-preserve-root\s+)?/+\s*$'
+    exit: any
+  hint: >-
+    `rm` refuses to remove `/` unless you add `--no-preserve-root`, and nothing good is on the other side of that flag.
+    On Pridwen the image is read-only anyway, but `/var` and `/home` are not.
+  why: |
+    GNU rm has a guard against the most famous mistake on Linux. The base image under
+    `/usr` is mounted read-only and would survive, but `/etc`, `/var` and your home would
+    not. If you meant to empty a directory, name that directory.
+    Ways forward:
+      1. `rm -ri ./dir`            interactive, relative path, no leading slash
+      2. `ls` first, then `rm`      look before you remove
+      3. `trash` (Flatpak apps)     the desktop Trash is recoverable; rm is not
+  man: [rm(1)]
+  cooldown: 3600
+  priority: 50
+- id: file-rm-home
+  node: files
+  lesson: file-02
+  when:
+    command: '^rm\s+(-[A-Za-z]+\s+)*(~|\$HOME|/home/[a-z_][a-z0-9_-]*)/?\s*$'
+    exit: any
+  hint: >-
+    That targets your whole home directory, including your shell config, SSH keys and Pridwen progress.
+    Name the thing you want gone, and use `rm -ri` while learning.
+  man: [rm(1)]
+  cooldown: 3600
+  priority: 50
+- id: file-rm-dir
+  node: files
+  lesson: file-02
+  when:
+    command: '^rm\s+(?!-)(?P<path>\S+)\s*$'
+    probe: is_dir:{path}
+  hint: >-
+    `rm` will not remove a directory on its own. `rmdir {path}` works if it is empty; `rm -r {path}` removes it and everything inside.
+  why: |
+    Removing a directory means removing every entry in it first, which is a different
+    kind of decision, so rm asks you to say so with `-r`. There is no undo.
+    Ways forward:
+      1. `rmdir {path}`             only succeeds when empty, which is a safe check
+      2. `ls -A {path}`             see what would go
+      3. `rm -ri {path}`            remove it, asking about each file
+  man: [rm(1), rmdir(1)]
+  cooldown: 1800
+  priority: 10
+- id: file-mkdir-exists
+  node: files
+  lesson: file-01
+  when:
+    command: '^mkdir\s+(?P<path>[^-\s]\S*)\s*$'
+    probe: exists:{path}
+  hint: >-
+    `{path}` already exists. `mkdir -p` treats that as success, which is what scripts usually want.
+  man: [mkdir(1)]
+  cooldown: 3600
+  priority: 10
+- id: file-mkdir-parent
+  node: files
+  lesson: file-01
+  when:
+    command: '^mkdir\s+(?P<path>[^-\s]\S*/\S+)\s*$'
+    probe: missing:{path}
+  hint: >-
+    A parent directory in that path does not exist yet. `mkdir -p {path}` creates the whole chain.
+  man: [mkdir(1)]
+  cooldown: 3600
+  priority: 5
+- id: file-cp-missing-dest-dir
+  node: files
+  lesson: file-02
+  when:
+    command: '^(cp|mv)\s+(-\S+\s+)*\S+\s+(?P<dest>\S+/)\s*$'
+    probe: missing:{dest}
+  hint: >-
+    The destination directory `{dest}` does not exist, so `{cmd}` had nowhere to put the file.
+    `mkdir -p {dest}` first, then run it again.
+  why: |
+    With a trailing slash you told `{cmd}` the target is a directory. It will copy into an
+    existing directory but never create one for you.
+    Ways forward:
+      1. `mkdir -p {dest}`          create it
+      2. `{cmd} file {dest}`         then repeat the copy or move
+      3. `cp --parents` / `rsync -a` keep a tree structure when copying many files
+  man: [cp(1), mv(1), mkdir(1)]
+  cooldown: 1800
+  priority: 10
+- id: file-cp-dir
+  node: files
+  lesson: file-02
+  when:
+    command: '^cp\s+(?P<src>[^-\s]\S*)\s+\S+\s*$'
+    probe: is_dir:{src}
+  hint: >-
+    `cp` needs `-r` to copy a directory: `cp -r {src} dest`. `-a` also keeps modes and timestamps.
+  man: [cp(1)]
+  cooldown: 3600
+  priority: 8
+- id: file-cat-dir
+  node: files
+  lesson: file-03
+  when:
+    command: '^(cat|less|more|head|tail)\s+(?P<path>[^-\s]\S*)\s*$'
+    probe: is_dir:{path}
+  hint: >-
+    `{path}` is a directory, and `{cmd}` reads files. `ls -l {path}` lists it; `tree {path}` if you have it.
+  man: [ls(1)]
+  cooldown: 3600
+  priority: 8
+- id: file-grep-dir
+  node: files
+  lesson: file-03
+  when:
+    command: '^grep\s+(-[^rR\s]+\s+)*(?P<pattern>[^-\s]\S*)\s+(?P<path>\S+)\s*$'
+    exit: [2]
+    probe: is_dir:{path}
+  hint: >-
+    `grep` searched a directory as if it were a file. Add `-r` to walk it: `grep -rn {pattern} {path}`.
+  why: |
+    grep reads the files you name. A directory is not a stream of text, so it reports
+    "Is a directory" and exits 2. `-r` recurses, `-n` shows line numbers, `-i` ignores case.
+    Ways forward:
+      1. `grep -rn {pattern} {path}`         search every file below it
+      2. `grep -rl {pattern} {path}`         just the file names
+      3. `grep -rn --include='*.conf' ...`   limit by name
+  man: [grep(1)]
+  cooldown: 3600
+  priority: 10
+- id: file-find-denied
+  node: files
+  lesson: file-03
+  when:
+    command: '^find\s+(?P<path>/\S*)'
+    exit: [1]
+    not_sudo: true
+  hint: >-
+    `find` keeps walking after each "Permission denied" but exits 1 to say it missed some.
+    Add `2>/dev/null` to hide those lines, or `sudo find` when you truly need root's view.
+  why: |
+    Directories such as `/root`, other users' homes and parts of `/var` are closed to you.
+    find reports each one on stderr and carries on; the results on stdout are still good.
+    Ways forward:
+      1. `find {path} -name '*.conf' 2>/dev/null`   quiet
+      2. `sudo find {path} -name ...`                 full tree, logged as a sudo use
+      3. `locate` is not installed; `find` from a narrower start directory is faster
+  man: [find(1)]
+  cooldown: 3600
+- id: file-find-unquoted-glob
+  node: files
+  lesson: file-03
+  when:
+    command: '^find\s+.*-(i?name|path)\s+[^''"\s]*\*'
+    exit: any
+  hint: >-
+    An unquoted `*` is expanded by the shell before `find` runs, so the pattern only works by luck.
+    Quote it: `find . -name '*.log'`.
+  man: [find(1), bash(1)]
+  cooldown: 86400
+  priority: 5
+- id: file-tar-no-f
+  node: files
+  lesson: file-03
+  when:
+    command: '^tar\s+-?[xcta-eg-zA-Z]*[xct][a-eg-zA-Z]*\s+\S+'
+  hint: >-
+    Without `f`, `tar` looks for a tape drive instead of your file. Put `f` last in the cluster: `tar xzf archive.tar.gz`.
+  why: |
+    tar predates files as archives. `f` says "the next word is the archive", and because
+    it consumes the next word it must be the final letter in the cluster.
+    Ways forward:
+      1. `tar tf archive.tar.gz`         list contents first
+      2. `tar xzf archive.tar.gz`        extract
+      3. `tar czf backup.tar.gz dir/`    create
+  man: [tar(1)]
+  cooldown: 3600
+  priority: 8
+- id: file-tar-f-not-last
+  node: files
+  lesson: file-03
+  when:
+    command: '^tar\s+-?[a-zA-Z]*f[a-zA-Z]+\s'
+  hint: >-
+    `f` has to be the last letter in the cluster because it takes the archive name that follows it.
+    `tar xzf file.tar.gz`, not `tar xfz`.
+  man: [tar(1)]
+  cooldown: 3600
+  priority: 9
+- id: file-tar-missing
+  node: files
+  lesson: file-03
+  when:
+    command: '^tar\s+.*f\s+(?P<path>\S+)'
+    probe: missing:{path}
+  hint: >-
+    `{path}` is not here. `ls *.tar*` finds archives in this directory; a download usually lands in `~/Downloads`.
+  man: [tar(1)]
+  cooldown: 3600
+  priority: 10
+- id: file-gzip-dir
+  node: files
+  lesson: file-03
+  when:
+    command: '^(gzip|bzip2|xz|zstd)\s+(?P<path>[^-\s]\S*)\s*$'
+    probe: is_dir:{path}
+  hint: >-
+    `{cmd}` compresses single files. For a directory, bundle it first: `tar czf {path}.tar.gz {path}`.
+  man: [gzip(1), tar(1)]
+  cooldown: 3600
+  priority: 8
+- id: file-ls-l-first
+  node: files
+  lesson: file-01
+  when:
+    command: '^ls\s+-[A-Za-z]*l'
+    exit: [0]
+  hint: >-
+    That long listing reads left to right as mode, link count, owner, group, size, modified time, name.
+    `pridwen learn perm-01` decodes the mode column.
+  man: [ls(1)]
+  cooldown: 604800
+  priority: -10
+- id: file-rm-glob-space
+  node: files
+  lesson: file-02
+  when:
+    command: '^rm\s+(-\S+\s+)*\S+\s+\*\s*$'
+    exit: any
+  hint: >-
+    A space before `*` makes it a separate argument, so `rm` also removed everything in the current directory.
+    Write the pattern as one word, like `rm *.log`, and preview it with `ls *.log` first.
+  man: [rm(1), bash(1)]
+  cooldown: 3600
+  priority: 40

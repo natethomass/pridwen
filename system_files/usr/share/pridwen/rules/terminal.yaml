@@ -1,0 +1,182 @@
+# Coach rules: terminal (roots)
+# The shell itself: not found, exit codes, history, quoting, variables.
+
+- id: term-not-found
+  node: terminal
+  lesson: term-01
+  when:
+    command: '^(?P<name>[A-Za-z0-9_.+-]+)\b'
+    exit: [127]
+    probe: no_command:{name}
+  hint: >-
+    `{name}` is not on your PATH. On Pridwen, software usually arrives as a Flatpak
+    (`flatpak search {name}`), lives inside a Distrobox, or is layered with `rpm-ostree install`.
+  why: |
+    Exit 127 is the shell saying it searched every directory in $PATH and found no
+    executable called `{name}`. The base image is read-only, so the usual reflex
+    (`dnf install`) does not apply here.
+    Ways forward:
+      1. `flatpak search {name}`            desktop apps come from Flathub
+      2. `distrobox enter`                  a mutable Fedora or Rocky box for CLI tools
+      3. `rpm-ostree search {name}`         then `rpm-ostree install`, active after reboot
+      4. `type {name}`                      check whether it is an alias or function you expected
+  man: [bash(1), rpm-ostree(1), flatpak(1)]
+  cooldown: 900
+  priority: -5
+- id: term-ctrl-c
+  node: terminal
+  lesson: term-02
+  when:
+    command: '.'
+    exit: [130]
+  hint: >-
+    Exit 130 means you stopped it with Ctrl-C, which sends SIGINT. Nothing went wrong on the system's side.
+  why: |
+    Exit codes above 128 mean "killed by signal number (code - 128)". 130 - 128 = 2,
+    and signal 2 is SIGINT, the interrupt Ctrl-C sends to the foreground process.
+    Ways forward:
+      1. Run it again if you stopped it by accident
+      2. `kill -l`     lists every signal number and name
+  man: [signal(7), bash(1)]
+  cooldown: 86400
+  priority: -10
+- id: term-exit-126
+  node: terminal
+  lesson: term-02
+  when:
+    command: '^(?P<name>\S+)'
+    exit: [126]
+  hint: >-
+    Exit 126 means the file was found but could not be run, usually because it lacks the
+    execute bit or is a directory. `ls -l {name}` shows which.
+  why: |
+    The shell found `{name}` but the kernel refused to execute it. That is either a
+    missing execute permission, a directory, or a file the SELinux policy will not let
+    this user run.
+    Ways forward:
+      1. `chmod +x {name}`         if it is your script
+      2. `bash {name}`             run it through the interpreter without changing the mode
+      3. `ls -lZ {name}`           check owner, mode and SELinux label
+  man: [chmod(1), bash(1)]
+  cooldown: 3600
+  priority: -3
+- id: term-exit-2-usage
+  node: terminal
+  lesson: term-02
+  when:
+    command: '^(?P<name>(ls|grep|cp|mv|rm|mkdir|cat|find|tar|sed|awk|cut|sort))\b'
+    exit: [2]
+  hint: >-
+    For GNU tools exit 2 usually means a usage problem or a path that does not exist.
+    `{name} --help` shows the expected shape.
+  cooldown: 7200
+  priority: -5
+- id: term-cd-missing
+  node: terminal
+  lesson: term-01
+  when:
+    command: '^cd\s+(?P<path>[^-\s]\S*)\s*$'
+    probe: missing:{path}
+  hint: >-
+    There is no `{path}` from here. `ls` shows what this directory holds, and `pwd` says where "here" is.
+  why: |
+    `cd` resolves the name relative to your current directory unless it starts with `/`,
+    `~`, or `.`. A name that exists somewhere else is still "No such file or directory" here.
+    Ways forward:
+      1. `pwd; ls`                   see where you are and what is around you
+      2. `cd /full/path`             use an absolute path
+      3. `cd ~/Doc` then Tab         let completion finish the name
+  man: [bash(1)]
+  cooldown: 1800
+  priority: 10
+- id: term-cd-file
+  node: terminal
+  lesson: term-01
+  when:
+    command: '^cd\s+(?P<path>[^-\s]\S*)\s*$'
+    probe: not is_dir:{path}
+  hint: >-
+    `{path}` is a file, and `cd` only enters directories. To read it, try `less {path}`;
+    to go where it lives, `cd $(dirname {path})`.
+  man: [bash(1), dirname(1)]
+  cooldown: 1800
+  priority: 5
+- id: term-assign-spaces
+  node: terminal
+  lesson: term-03
+  when:
+    command: '^[A-Za-z_]\w*\s+=\s*\S'
+    exit: [127]
+  hint: >-
+    The shell read that as a command named after your variable. Assignments take no spaces
+    around the equals sign: `NAME=value`.
+  why: |
+    `FOO = bar` is the command `FOO` with arguments `=` and `bar`. The shell only treats
+    `word=value` as an assignment when the word, the `=` and the value are one token.
+    Ways forward:
+      1. `FOO=bar`               set it for this shell
+      2. `export FOO=bar`        also pass it to programs you start
+      3. `echo "$FOO"`           read it back, in double quotes
+  man: [bash(1)]
+  cooldown: 3600
+  priority: 20
+- id: term-dollar-assign
+  node: terminal
+  lesson: term-03
+  when:
+    command: '^\$[A-Za-z_]\w*='
+  hint: >-
+    Use the dollar sign to read a variable, not to set it. `NAME=value` sets, `$NAME` reads.
+  man: [bash(1)]
+  cooldown: 3600
+  priority: 20
+- id: term-single-quote-var
+  node: terminal
+  lesson: term-03
+  when:
+    command: '''[^'']*\$[A-Za-z_{][^'']*'''
+    exit: any
+  hint: >-
+    Inside single quotes `$` is just a character, so the variable did not expand.
+    Double quotes expand variables and still keep the words together.
+  why: |
+    Single quotes mean "exactly these characters". Double quotes mean "these characters,
+    but expand `$var`, `$(cmd)` and backslash escapes". Unquoted means "expand, then split
+    on whitespace and match globs".
+    Ways forward:
+      1. `echo "$HOME"`          expands, keeps spaces
+      2. `echo '$HOME'`          prints the literal text
+      3. `echo "It's"`           put an apostrophe inside double quotes
+  man: [bash(1)]
+  cooldown: 86400
+  priority: 5
+- id: term-tilde-quoted
+  node: terminal
+  lesson: term-03
+  when:
+    command: '["'']~/'
+  hint: >-
+    A tilde inside quotes stays a literal tilde, so the path pointed at a directory named `~`.
+    Write `~/dir` unquoted, or `"$HOME/dir"`.
+  man: [bash(1)]
+  cooldown: 3600
+  priority: 8
+- id: term-man-missing
+  node: terminal
+  lesson: term-01
+  when:
+    command: '^man\s+(?P<name>[A-Za-z0-9_.+-]+)\s*$'
+    exit: [16]
+  hint: >-
+    No manual page for `{name}` here. Try `{name} --help`, `pridwen explain {name}`, or `apropos {name}` to search by topic.
+  man: [man(1), apropos(1)]
+  cooldown: 3600
+- id: term-which-missing
+  node: terminal
+  lesson: term-01
+  when:
+    command: '^(which|type|command\s+-v)\s+(?P<name>\S+)'
+  hint: >-
+    `{name}` is not on PATH. `echo $PATH` lists where the shell looks; Flatpaks and Distrobox tools are not on it unless exported.
+  man: [bash(1), distrobox-export(1)]
+  cooldown: 3600

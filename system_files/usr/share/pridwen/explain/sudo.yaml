@@ -1,0 +1,11 @@
+command: sudo
+node: sudo
+summary: Run a command as another user.
+man: sudo(8)
+flags:
+  -i: Start a login shell as the target user, by default root.
+  -u: Run as a named user instead of root.
+  -l: List the commands the current user may run.
+  -e: Edit a file as root by way of sudoedit.
+  -k: Forget the cached credential so the next call prompts.
+  -v: Refresh the cached credential without running a command.

@@ -1,0 +1,11 @@
+command: ss
+node: networking
+summary: Show socket statistics.
+man: ss(8)
+flags:
+  -t: Show TCP sockets.
+  -u: Show UDP sockets.
+  -l: Show only listening sockets.
+  -n: Do not resolve port or host names.
+  -p: Show the process using each socket.
+  -a: Show both listening and established sockets.

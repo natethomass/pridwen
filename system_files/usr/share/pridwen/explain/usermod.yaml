@@ -1,0 +1,11 @@
+command: usermod
+node: users
+summary: Change an existing user account.
+man: usermod(8)
+flags:
+  -aG: Append the user to supplementary groups without removing others.
+  -G: Replace the whole set of supplementary groups.
+  -s: Change the login shell.
+  -L: Lock the account's password.
+  -U: Unlock the account's password.
+  -l: Change the login name.

@@ -1,0 +1,12 @@
+command: cp
+node: files
+summary: Copy files and directories.
+man: cp(1)
+flags:
+  -r: Copy directories recursively.
+  -a: 'Archive mode: recursive, preserving mode, ownership, and timestamps.'
+  -i: Prompt before overwriting an existing file.
+  -p: Preserve mode, ownership, and timestamps.
+  -v: Print each file as it is copied.
+  -u: Copy only when the source is newer than the destination.
+  --parents: Recreate the source's leading directories under the destination.

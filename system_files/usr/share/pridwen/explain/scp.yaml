@@ -1,0 +1,10 @@
+command: scp
+node: ssh
+summary: Copy files over SSH.
+man: scp(1)
+flags:
+  -r: Copy directories recursively.
+  -p: Preserve modification times and modes.
+  -P: Use a non-default port on the remote host.
+  -i: Use a specific private key file.
+  -C: Compress the data in transit.

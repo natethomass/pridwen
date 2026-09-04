@@ -1,0 +1,6 @@
+command: getenforce
+node: selinux
+summary: Print the current SELinux mode.
+man: getenforce(8)
+flags:
+  getenforce: Prints Enforcing, Permissive, or Disabled with no options.
