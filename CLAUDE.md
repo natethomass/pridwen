@@ -162,6 +162,25 @@ language and keyboard pages in the wizard; Guide connection page is informationa
 M5; VirtualBox guest additions; Anaconda's blue progress bar and buttons are GTK Adwaita
 literals, not themable from the product CSS. The "recording worth posting" is the owner's call.
 
+## M2 status (2026-09-04, in progress)
+
+Design: `docs/coach.md` (installed at `/usr/share/doc/pridwen/coach.md`). Read it before
+touching rules or the daemon. Slices:
+
+1. **Coach core** (cda3f45): `pridwend` (GLib, per-user, `$XDG_RUNTIME_DIR/pridwen/coach.sock`),
+   bash and zsh hooks in `/usr/share/pridwen/shell/`, C client `pridwen-coach-send` (built by
+   gcc in build.sh, gcc removed after), rules engine with probes, SQLite store
+   `~/.local/share/pridwen/pridwen.db`, CLI `pridwen why|explain|learn|quiet|status`, Dispatch
+   via libnotify. Python package lives at `/usr/lib/pridwen/pridwen/` (no RPM/COPR yet).
+2. **Content**: `tree.yaml` (29 nodes), `rules/<node>.yaml` (~200), `nudges.yaml`,
+   `lessons/<id>.md` (87), `explain/<cmd>.yaml` (30). Written by a subagent from the schema.
+3. **Verify in VM**: hook prints hints after failures, `pridwen why` explains, SELinux
+   denial translated, a nudge arrives after ten sudos, `pridwen quiet` silences.
+
+Decisions: bash stays the default login shell (zsh hook shipped too); rules match the
+command with a leading sudo stripped (`not_sudo` distinguishes); output is never captured,
+probes look at the system instead; secrets are scrubbed before storage.
+
 ## The mark
 
 The Pridwen mark is "Chief": a heater shield with a chevron cut out, chosen by the owner on
