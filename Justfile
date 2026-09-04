@@ -47,37 +47,42 @@ sudoif command *args:
     }
     sudoif {{ command }} {{ args }}
 
+# OCI labels for the image, one key=value per line. Shared by build and
+# ostree-rechunk, because rpm-ostree's chunker writes a fresh image config
+# and drops every label podman build applied.
+[private]
+labels:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z "$(git status -s)" ]]; then
+        GIT_SHA=$(git rev-parse --short HEAD)
+        echo "io.artifacthub.package.readme-url=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md"
+        echo "org.opencontainers.image.documentation=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md"
+        echo "org.opencontainers.image.source=https://github.com/{{ repo_organization }}/{{ image_name }}/blob/${GIT_SHA}/Containerfile"
+        echo "org.opencontainers.image.url=https://github.com/{{ repo_organization }}/{{ image_name }}/tree/${GIT_SHA}"
+        echo "org.opencontainers.image.version={{ default_tag }}.$(date +%Y%m%d)-${GIT_SHA}"
+        echo "org.opencontainers.image.revision=$(git rev-parse HEAD)"
+    fi
+    echo "io.artifacthub.package.deprecated=false"
+    echo "io.artifacthub.package.keywords={{ image_keywords }}"
+    echo "io.artifacthub.package.license=MIT"
+    echo "io.artifacthub.package.logo-url={{ image_logo_url }}"
+    echo "io.artifacthub.package.prerelease=true"
+    echo "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "org.opencontainers.image.description={{ image_desc }}"
+    echo "org.opencontainers.image.title={{ image_name }}"
+    echo "org.opencontainers.image.vendor={{ repo_organization }}"
+
 # Build the image using the specified parameters
 build $target_image=image_name $tag=default_tag:
     #!/usr/bin/env bash
 
     set -euox pipefail
 
-    BUILD_ARGS=()
     LABELS=()
-    if [[ -z "$(git status -s)" ]]; then
-        GIT_SHA=$(git rev-parse --short HEAD)
-        LABELS+=("--label" "io.artifacthub.package.readme-url=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md")
-        LABELS+=("--label" "org.opencontainers.image.documentation=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md")
-        LABELS+=("--label" "org.opencontainers.image.source=https://github.com/{{ repo_organization }}/{{ image_name }}/blob/${GIT_SHA}/Containerfile")
-        LABELS+=("--label" "org.opencontainers.image.url=https://github.com/{{ repo_organization }}/{{ image_name }}/tree/${GIT_SHA}")
-        LABELS+=("--label" "org.opencontainers.image.version={{ default_tag }}.$(date +%Y%m%d)-${GIT_SHA}")
-        LABELS+=("--label" "org.opencontainers.image.revision=$(git rev-parse HEAD)")
-    fi
+    while IFS= read -r label; do LABELS+=("--label" "${label}"); done < <(just labels)
 
-    LABELS+=("--label" "io.artifacthub.package.deprecated=false")
-    LABELS+=("--label" "io.artifacthub.package.keywords={{ image_keywords }}")
-    LABELS+=("--label" "io.artifacthub.package.license=MIT")
-    LABELS+=("--label" "io.artifacthub.package.logo-url={{ image_logo_url }}")
-    LABELS+=("--label" "io.artifacthub.package.prerelease=true")
-    LABELS+=("--label" "org.opencontainers.image.created=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)")
-    LABELS+=("--label" "org.opencontainers.image.description={{ image_desc }}")
-    LABELS+=("--label" "org.opencontainers.image.title={{ image_name }}")
-    LABELS+=("--label" "org.opencontainers.image.vendor={{ repo_organization }}")
-
-    PODMAN_BUILD_ARGS=("${BUILD_ARGS[@]}" "${LABELS[@]}" --pull=newer --tag "${target_image}:${tag}" --file Containerfile)
-
-    podman build "${PODMAN_BUILD_ARGS[@]}" .
+    podman build "${LABELS[@]}" --pull=newer --tag "${target_image}:${tag}" --file Containerfile .
 
 # Split the image into layers for smaller updates (rpm-ostree chunker)
 ostree-rechunk $target_image=image_name $tag=default_tag:
@@ -101,6 +106,13 @@ ostree-rechunk $target_image=image_name $tag=default_tag:
       --bootc \
       --rootfs /rpm-ostree \
       --output "containers-storage:[overlay@/run/host-container-storage+/run/rpm-ostree-storage]localhost/${target_image}:${tag}"
+
+    # The chunker emits a bare config, so the labels (incl. the revision the
+    # disk workflow checks) are re-applied as a metadata-only layer on top.
+    LABELS=()
+    while IFS= read -r label; do LABELS+=("--label" "${label}"); done < <(just labels)
+    printf 'FROM localhost/%s:%s\n' "${target_image}" "${tag}" \
+      | podman build "${LABELS[@]}" --pull=never --tag "${target_image}:${tag}" --file - .
 
 # Generate Default Tag
 [group('Utility')]
