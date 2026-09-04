@@ -1,0 +1,15 @@
+# Pridwen terminal defaults (Ptyxis). One profile with a fixed uuid so the
+# Cream Glass palette (from /etc/skel) is the default; users can add their own.
+
+[org/gnome/Ptyxis]
+default-profile-uuid='7a1d2c3e-5b6f-4a70-9c1d-0e2f3a4b5c6d'
+profile-uuids=['7a1d2c3e-5b6f-4a70-9c1d-0e2f3a4b5c6d']
+interface-style='system'
+use-system-font=true
+audible-bell=false
+visual-bell=true
+
+[org/gnome/Ptyxis/Profiles/7a1d2c3e-5b6f-4a70-9c1d-0e2f3a4b5c6d]
+label='Pridwen'
+palette='pridwen'
+opacity=0.96

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pridwen greeter and lock-screen styling.
+# Pridwen greeter, lock-screen and top-bar styling.
 #
 # GDM runs GNOME Shell and cannot load extensions, so the only way to restyle it
 # is to rewrite the shell's theme gresource. This extracts every resource,
@@ -9,6 +9,7 @@ set -euo pipefail
 
 GRES=/usr/share/gnome-shell/gnome-shell-theme.gresource
 OVERRIDE=/ctx/gdm-override.css
+SHELL_OVERRIDE=/ctx/shell-override.css
 
 dnf5 install -y glib2-devel
 
@@ -27,6 +28,8 @@ count=0
 while read -r css; do
     printf '\n\n/* --- Pridwen Cream Glass (build_files/gdm-override.css) --- */\n' >> "$css"
     cat "$OVERRIDE" >> "$css"
+    printf '\n\n/* --- Pridwen Cream Glass shell chrome (build_files/shell-override.css) --- */\n' >> "$css"
+    cat "$SHELL_OVERRIDE" >> "$css"
     count=$((count + 1))
 done < <(find src -name 'gnome-shell*.css')
 echo "gdm-theme: patched ${count} stylesheet(s)"

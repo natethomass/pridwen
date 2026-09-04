@@ -30,6 +30,15 @@ gi.require_version("AccountsService", "1.0")
 gi.require_version("Gdm", "1.0")
 from gi.repository import AccountsService, Adw, Gdk, Gdm, Gio, GLib, Gtk  # noqa: E402
 
+# Locale names and keyboard layouts come from libgnome-desktop (package
+# gnome-desktop4). If it is missing the language and keyboard pages are skipped
+# rather than blocking first boot.
+try:
+    gi.require_version("GnomeDesktop", "4.0")
+    from gi.repository import GnomeDesktop  # noqa: E402
+except (ValueError, ImportError):
+    GnomeDesktop = None
+
 APP_ID = "org.pridwen.FirstBoot"
 SERVICE_NAME = "gdm-password"
 NIGHT_WALLPAPER = "/usr/share/backgrounds/pridwen/pridwen-night.png"
@@ -71,6 +80,19 @@ window.pridwen {
 .pridwen-card row:selected, .pridwen-card row:hover { background-color: rgba(255,255,255,0.08); }
 .pridwen-card row .subtitle { color: #B5AD9F; }
 .pridwen-dots { color: #7E776C; }
+.pridwen-card searchentry {
+  background-color: rgba(255,255,255,0.06); color: #ECE6DA; border-radius: 99px;
+  border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px;
+}
+.pridwen-card searchentry:focus-within { border-color: #8FB0CC; }
+.pridwen-card scrolledwindow.pick {
+  border-radius: 18px; border: 1px solid rgba(255,255,255,0.10);
+  background-color: rgba(255,255,255,0.05);
+}
+.pridwen-card list.pick { background: transparent; }
+.pridwen-card list.pick row { padding: 10px 16px; color: #ECE6DA; border-radius: 12px; margin: 2px 6px; }
+.pridwen-card list.pick row:selected { background-color: rgba(143,176,204,0.22); color: #F2EDE3; }
+.pridwen-card list.pick row .dim { color: #7E776C; }
 """ % NIGHT_WALLPAPER.encode()
 
 USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -235,6 +257,105 @@ class ChoicePage(Page):
             self.value = value
 
 
+class PickList(Gtk.Box):
+    """A searchable single-choice list: items are (id, label, hint)."""
+
+    def __init__(self, items, default, on_change=None, height=270):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.value = default
+        self.on_change = on_change
+        self.search = Gtk.SearchEntry(placeholder_text="Search")
+        self.search.connect("search-changed", lambda *_: self.list.invalidate_filter())
+        self.append(self.search)
+        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.list.add_css_class("pick")
+        self.list.set_filter_func(self.filter_row)
+        default_row = None
+        for pid, label, hint in items:
+            row = Gtk.ListBoxRow()
+            row.pid, row.text = pid, f"{label} {hint}".lower()
+            box = Gtk.Box(spacing=8)
+            box.append(Gtk.Label(label=label, xalign=0, hexpand=True, ellipsize=3))
+            if hint:
+                h = Gtk.Label(label=hint, xalign=1)
+                h.add_css_class("dim")
+                box.append(h)
+            row.set_child(box)
+            self.list.append(row)
+            if pid == default:
+                default_row = row
+        self.list.connect("row-selected", self.on_selected)
+        scroller = Gtk.ScrolledWindow(child=self.list, min_content_height=height, max_content_height=height,
+                                      hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller.add_css_class("pick")
+        self.append(scroller)
+        if default_row is not None:
+            self.list.select_row(default_row)
+            GLib.idle_add(lambda: (default_row.grab_focus(), False)[1])
+
+    def filter_row(self, row):
+        q = self.search.get_text().strip().lower()
+        return not q or all(w in row.text for w in q.split())
+
+    def on_selected(self, _list, row):
+        if row is not None and row.pid != self.value:
+            self.value = row.pid
+            if self.on_change:
+                self.on_change(self.value)
+
+
+def all_locales():
+    """(locale, language name, country) for every installed locale, English (US) first."""
+    if GnomeDesktop is None:
+        return []
+    out = []
+    for loc in GnomeDesktop.get_all_locales():
+        name = GnomeDesktop.get_language_from_locale(loc, None) or loc
+        out.append((loc, name, ""))
+    out.sort(key=lambda t: (t[0] != "en_US.UTF-8", t[1].lower()))
+    return out
+
+
+def all_layouts():
+    """(xkb id, display name, short name) for every keyboard layout, US first."""
+    if GnomeDesktop is None:
+        return []
+    info = GnomeDesktop.XkbInfo()
+    out = []
+    for lid in info.get_all_layouts():
+        ok, display, short, _layout, _variant = info.get_layout_info(lid)
+        if ok:
+            out.append((lid, display or lid, short or ""))
+    out.sort(key=lambda t: (t[0] != "us", t[1].lower()))
+    return out
+
+
+class LanguagePage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Language", "For menus, dates, and the Coach. Pridwen's lessons are in English for now.")
+        self.pick = PickList(all_locales(), "en_US.UTF-8")
+        self.body.append(self.pick)
+
+    @property
+    def value(self):
+        return self.pick.value
+
+
+class KeyboardPage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Keyboard", "Pick your layout before you type a password. It applies right away, so try it in the search box.")
+        self.pick = PickList(all_layouts(), "us", on_change=self.apply_live)
+        self.body.append(self.pick)
+
+    @property
+    def value(self):
+        return self.pick.value
+
+    def apply_live(self, layout_id):
+        # This session's Shell follows input-sources immediately.
+        gsettings_set("org.gnome.desktop.input-sources", "sources", f"[('xkb', '{layout_id}')]")
+
+
 class GuidePage(Page):
     def __init__(self, wizard):
         super().__init__(wizard, "The Guide", "An assistant that explains what you're looking at and never runs anything for you.")
@@ -308,7 +429,10 @@ class Wizard(Adw.Application):
                                 ("day", "Always day", "The cream canvas."),
                                 ("night", "Always night", "Deep night, where the glass shows.")],
                                "auto")
-        self.pages = [WelcomePage(self), self.account, self.track, self.look, GuidePage(self), PrivacyPage(self)]
+        self.language = LanguagePage(self) if GnomeDesktop else None
+        self.keyboard = KeyboardPage(self) if GnomeDesktop else None
+        self.pages = [p for p in [WelcomePage(self), self.language, self.keyboard, self.account, self.track, self.look,
+                                  GuidePage(self), PrivacyPage(self)] if p is not None]
         for i, p in enumerate(self.pages):
             self.stack.add_named(p, f"p{i}")
         overlay = Gtk.Overlay(child=self.stack)
@@ -433,6 +557,21 @@ class Wizard(Adw.Application):
         user.set_password_mode(AccountsService.UserPasswordMode.REGULAR)
         log("password set")
         uid = user.get_uid()
+
+        # Language and keyboard: on the account (GDM applies the language at
+        # login), in this session's dconf (copied over), and system-wide via
+        # localed, which the initial-setup polkit rules allow. All best effort.
+        if self.language is not None:
+            loc = self.language.value
+            user.set_language(loc)
+            r = subprocess.run(["localectl", "set-locale", f"LANG={loc}"], capture_output=True, text=True)
+            log(f"language {loc}: set on account; localectl rc={r.returncode} {r.stderr.strip()}")
+        if self.keyboard is not None:
+            lid = self.keyboard.value
+            gsettings_set("org.gnome.desktop.input-sources", "sources", f"[('xkb', '{lid}')]")
+            layout, _, variant = lid.partition("+")
+            r = subprocess.run(["localectl", "set-x11-keymap", layout, "", variant], capture_output=True, text=True)
+            log(f"keyboard {lid}: localectl rc={r.returncode} {r.stderr.strip()}")
 
         # Choices, into this session's dconf: the copy worker carries them over.
         dconf_write(self.track.key, f"'{self.track.value}'")

@@ -4,7 +4,7 @@
 
 set -ouex pipefail
 
-PRIDWEN_VERSION="0.2.0-m1"
+PRIDWEN_VERSION="0.2.1-m1"
 IMAGE_REF="ghcr.io/natethomass/pridwen"
 
 ### 1. Overlay files from system_files/ onto /
@@ -22,7 +22,11 @@ dnf5 install -y \
     plymouth-plugin-script \
     plymouth-plugin-label \
     darkman \
-    python3-gobject
+    python3-gobject \
+    gnome-desktop4 \
+    virtualbox-guest-additions
+# gnome-desktop4: GnomeDesktop typelib for the wizard (locales, keyboard layouts).
+# virtualbox-guest-additions: userspace only; the kernel already has vboxguest/vboxsf.
 
 # Fedora's corner watermark extension has no place on a Pridwen desktop.
 dnf5 remove -y gnome-shell-extension-background-logo || true

@@ -1,0 +1,39 @@
+/* Pridwen Cream Glass: GNOME Shell chrome in the user session (top bar).
+ * Appended to every shell stylesheet by build_files/gdm-theme.sh, next to the
+ * greeter rules in gdm-override.css. The bar is night glass in both modes:
+ * slightly translucent, cream text, slate ring on the active button.
+ */
+#panel {
+  background-color: rgba(17, 19, 24, 0.90);
+  color: #ECE6DA;
+  font-weight: 600;
+}
+#panel .panel-button {
+  color: #ECE6DA;
+  border-radius: 99px;
+  -natural-hpadding: 12px;
+  -minimum-hpadding: 8px;
+}
+#panel .panel-button:hover,
+#panel .panel-button:focus {
+  background-color: rgba(242, 237, 227, 0.10);
+  color: #F2EDE3;
+}
+#panel .panel-button:active,
+#panel .panel-button:overview,
+#panel .panel-button:checked {
+  background-color: rgba(143, 176, 204, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(143, 176, 204, 0.40);
+  color: #F2EDE3;
+}
+#panel .panel-button .system-status-icon,
+#panel .panel-button .app-menu-icon {
+  color: #ECE6DA;
+}
+#panel .panel-button.clock-display .clock {
+  font-weight: 600;
+}
+/* the bar over the overview and the lock screen: same night glass */
+#panel:overview {
+  background-color: rgba(17, 19, 24, 0.90);
+}
