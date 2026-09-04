@@ -1,0 +1,18 @@
+[Unit]
+Description=Pridwen Coach and Dispatch daemon
+Documentation=file:///usr/share/doc/pridwen/coach.md
+# Not in GDM's setup session or the greeter.
+ConditionUser=!gnome-initial-setup
+ConditionUser=!gdm
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/pridwend
+Restart=on-failure
+RestartSec=2
+Nice=5
+Slice=background.slice
+
+[Install]
+WantedBy=default.target

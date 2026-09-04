@@ -8,6 +8,7 @@
 FROM scratch AS ctx
 COPY build_files /
 COPY system_files /system_files
+COPY docs /docs
 
 # Base image: Universal Blue Silverblue (Fedora Atomic GNOME + hardware enablement,
 # codecs, and a build pipeline that already works).

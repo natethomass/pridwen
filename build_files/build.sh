@@ -24,7 +24,9 @@ dnf5 install -y \
     darkman \
     python3-gobject \
     gnome-desktop4 \
-    virtualbox-guest-additions
+    virtualbox-guest-additions \
+    python3-pyyaml \
+    libnotify
 # gnome-desktop4: GnomeDesktop typelib for the wizard (locales, keyboard layouts).
 # virtualbox-guest-additions: userspace only; the kernel already has vboxguest/vboxsf.
 
@@ -95,5 +97,28 @@ systemctl --global mask gnome-initial-setup-first-login.service
 systemctl enable pridwen-narrate-disks.service pridwen-narrate-network.service pridwen-narrate-desktop.service
 systemctl --global enable darkman.service
 
-### 6. Services
+### 6. Coach and Dispatch (M2)
+# The shell hooks talk to the per-user daemon through a tiny C client so that
+# every prompt costs about a millisecond. gcc is only needed to build it.
+dnf5 install -y gcc
+gcc -O2 -Wall -Wextra -o /usr/libexec/pridwen-coach-send /ctx/coach-send.c
+dnf5 remove -y gcc
+chmod 0755 /usr/libexec/pridwen-coach-send /usr/libexec/pridwend /usr/bin/pridwen
+python3 -m compileall -q /usr/lib/pridwen
+install -Dm644 /ctx/docs/coach.md /usr/share/doc/pridwen/coach.md
+# Interactive shells source the hook. /etc/bashrc is read by every interactive
+# bash; Fedora's /etc/zshrc by every interactive zsh.
+cat >> /etc/bashrc <<'EOF'
+
+# Pridwen Coach (pridwen quiet to silence; see /usr/share/doc/pridwen/coach.md)
+[ -r /usr/share/pridwen/shell/coach.bash ] && . /usr/share/pridwen/shell/coach.bash
+EOF
+cat >> /etc/zshrc <<'EOF'
+
+# Pridwen Coach (pridwen quiet to silence; see /usr/share/doc/pridwen/coach.md)
+[ -r /usr/share/pridwen/shell/coach.zsh ] && source /usr/share/pridwen/shell/coach.zsh
+EOF
+systemctl --global enable pridwend.service
+
+### 7. Services
 systemctl enable podman.socket

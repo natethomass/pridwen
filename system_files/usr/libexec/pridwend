@@ -1,0 +1,9 @@
+#!/usr/bin/python3
+"""Pridwen Coach and Dispatch daemon (per-user). See /usr/share/doc/pridwen/coach.md."""
+import sys
+
+sys.path.insert(0, "/usr/lib/pridwen")
+from pridwen.daemon import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

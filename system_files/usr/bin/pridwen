@@ -1,0 +1,9 @@
+#!/usr/bin/python3
+"""Pridwen CLI: why, explain, learn, quiet, status. See /usr/share/doc/pridwen/coach.md."""
+import sys
+
+sys.path.insert(0, "/usr/lib/pridwen")
+from pridwen.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
