@@ -1,0 +1,30 @@
+# Pridwen OS installer ISO (Anaconda, built by bootc-image-builder --type anaconda-iso).
+#
+# The installer asks for a disk (tick "Encrypt my data" for LUKS) and nothing else.
+# It creates NO user: GNOME Initial Setup runs on first boot and creates one.
+# M1 replaces GNOME Initial Setup with the Pridwen welcome wizard.
+#
+# bootc-image-builder adds the `ostreecontainer` line that installs the embedded
+# image itself, so it must not appear here. The %post below repoints the installed
+# system at the registry so `bootc upgrade` pulls new builds.
+
+[customizations.installer.kickstart]
+contents = """
+%post
+bootc switch --mutate-in-place --transport registry ghcr.io/natethomass/pridwen:latest
+%end
+"""
+
+[customizations.installer.modules]
+enable = [
+  "org.fedoraproject.Anaconda.Modules.Storage",
+  "org.fedoraproject.Anaconda.Modules.Runtime"
+]
+disable = [
+  "org.fedoraproject.Anaconda.Modules.Network",
+  "org.fedoraproject.Anaconda.Modules.Security",
+  "org.fedoraproject.Anaconda.Modules.Services",
+  "org.fedoraproject.Anaconda.Modules.Users",
+  "org.fedoraproject.Anaconda.Modules.Subscription",
+  "org.fedoraproject.Anaconda.Modules.Timezone"
+]

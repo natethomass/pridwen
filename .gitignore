@@ -1,0 +1,19 @@
+# Never commit the signing key.
+cosign.key
+*.key
+
+# Local build output
+_build_*
+_build-*/**
+*_chunkah_*
+*_rpm-ostree_*
+output/
+previous.manifest.json
+changelog.md
+output.env
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,6 @@
+# Pridwen OS pre-installed disk images (qcow2 for Proxmox/libvirt, vmdk for VirtualBox).
+# No user is baked in: GNOME Initial Setup creates one on first boot.
+
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "20 GiB"
