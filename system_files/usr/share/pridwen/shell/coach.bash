@@ -13,7 +13,10 @@ __pridwen_t0=""
 # command line (the first DEBUG after a prompt).
 __pridwen_preexec() {
     [[ -n "${COMP_LINE:-}" ]] && return 0
+    # Skip the prompt's own commands (ours and anything else in PROMPT_COMMAND,
+    # e.g. __vte_prompt_command) so the timer starts at the user's command.
     [[ "$BASH_COMMAND" == "__pridwen_precmd" ]] && return 0
+    [[ ${#BASH_COMMAND} -ge 6 && "${PROMPT_COMMAND[*]:-}" == *"$BASH_COMMAND"* ]] && return 0
     [[ -z "$__pridwen_t0" ]] && __pridwen_t0="${EPOCHREALTIME:-$(date +%s.%N)}"
     return 0
 }
@@ -31,7 +34,7 @@ __pridwen_json_escape() {
 __pridwen_precmd() {
     local rc=$?
     local hist cmd t1 ms
-    hist="$(HISTTIMEFORMAT= builtin history 1)"
+    hist="$(HISTTIMEFORMAT='' builtin history 1)"
     # A new prompt without a new history entry means an empty line or a
     # duplicate suppressed by HISTCONTROL: nothing to report.
     if [[ -z "$hist" || "$hist" == "$__pridwen_last_hist" ]]; then

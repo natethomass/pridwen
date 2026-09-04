@@ -32,8 +32,9 @@ __pridwen_precmd() {
     [[ -z "$cmd" ]] && return 0
     __pridwen_cmd=""
     if [[ -n "$__pridwen_t0" && -n "$EPOCHREALTIME" ]]; then
-        ms=$(( int((EPOCHREALTIME - __pridwen_t0) * 1000) ))
-        (( ms < 0 )) && ms=0
+        ms=$(( (EPOCHREALTIME - __pridwen_t0) * 1000 ))
+        ms=${ms%.*}
+        [[ -z "$ms" || "$ms" == -* ]] && ms=0
     fi
     __pridwen_t0=""
     [[ ${#cmd} -gt 4000 ]] && cmd="${cmd[1,4000]}"
