@@ -1,0 +1,14 @@
+# GDM greeter defaults. Compiled into the gdm database by `dconf update` at build;
+# Fedora's /usr/share/dconf/profile/gdm reads system-db:gdm.
+# The greeter is always night: that is where Cream Glass shows.
+
+[org/gnome/login-screen]
+logo='/usr/share/pridwen/login-logo.png'
+banner-message-enable=false
+enable-fingerprint-authentication=true
+enable-smartcard-authentication=false
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+accent-color='slate'
+clock-show-weekday=true

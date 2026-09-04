@@ -88,7 +88,11 @@ def main():
     ImageDraw.Draw(b).ellipse((0, 0, 10 * SS - 1, 10 * SS - 1), fill=CREAM + (255,))
     down(b).save(out / "bullet.png")
     rounded_bar(260, 36, CREAM, 22).save(out / "entry.png")
-    print(f"wrote {FRAMES} mark frames + rail, bullet, entry to {out}")
+    # GDM login-screen logo (org.gnome.login-screen logo): a quiet 72px mark.
+    logo_dir = out.parent.parent.parent / "pridwen"  # /usr/share/pridwen
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    down(mark).resize((72, 72), Image.LANCZOS).save(logo_dir / "login-logo.png")
+    print(f"wrote {FRAMES} mark frames + rail, bullet, entry to {out}; login-logo.png to {logo_dir}")
 
 
 if __name__ == "__main__":

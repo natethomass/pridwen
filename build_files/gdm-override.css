@@ -1,0 +1,75 @@
+/* Pridwen Cream Glass: greeter (GDM) and lock screen.
+ * Appended to GNOME Shell's stylesheets by build_files/gdm-theme.sh, so every
+ * rule here wins over the stock one. Night canvas only: this is where the glass
+ * reads. Colours from the Cream Glass NIGHT tokens.
+ */
+
+/* the room: night wallpaper behind everything */
+#lockDialogGroup {
+  background-color: #111318;
+  background-image: url("/usr/share/backgrounds/pridwen/pridwen-night.png");
+  background-size: cover;
+}
+
+/* frosted user card */
+.login-dialog-user-list-item {
+  border-radius: 20px;
+  padding: 10px 18px;
+  color: #ECE6DA;
+  border: 1px solid transparent;
+}
+.login-dialog-user-list-item:focus,
+.login-dialog-user-list-item:hover,
+.login-dialog-user-list-item:selected {
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+}
+.login-dialog-user-list:expanded .login-dialog-user-list-item:focus {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+.login-dialog-user-list-item .login-dialog-timed-login-indicator {
+  background-color: #8FB0CC;
+}
+
+/* prompt, messages, clock */
+.login-dialog-prompt-layout,
+.login-dialog-message,
+.login-dialog-message-warning,
+.login-dialog-prompt-label,
+.login-dialog-username {
+  color: #ECE6DA;
+}
+.login-dialog-message-hint,
+.login-dialog-not-listed-label {
+  color: #B5AD9F;
+}
+.unlock-dialog-clock-time,
+.unlock-dialog-clock-date,
+.unlock-dialog-clock-hint {
+  color: #ECE6DA;
+}
+
+/* entry and buttons: glass, slate focus ring */
+.login-dialog StEntry,
+.login-dialog-prompt-entry {
+  border-radius: 99px;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ECE6DA;
+  padding: 8px 14px;
+}
+.login-dialog StEntry:focus,
+.login-dialog-prompt-entry:focus {
+  border-color: #8FB0CC;
+}
+.login-dialog-button,
+.login-dialog-session-list-button,
+.login-dialog .cancel-button {
+  border-radius: 99px;
+}
+
+/* logo at the bottom: keep it quiet */
+.login-dialog-logo-bin {
+  padding: 24px 0;
+}

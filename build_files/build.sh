@@ -62,6 +62,10 @@ dconf update
 # Register the mark with the icon cache so Settings > About and GDM can find it.
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 
+# Greeter and lock screen: rewrite GNOME Shell's theme gresource with the Cream
+# Glass override (GDM cannot load extensions, so this is the only way in).
+/ctx/gdm-theme.sh
+
 # Boot splash: /etc/plymouth/plymouthd.conf selects the pridwen theme. The initramfs
 # carries its own copy of the theme, so regenerate it (same recipe as Bazzite/Bluefin).
 plymouth-set-default-theme pridwen
