@@ -34,3 +34,7 @@ favorite-apps=['org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.mo
 
 [org/gnome/mutter]
 edge-tiling=true
+
+[org/gnome/desktop/datetime]
+# The wizard sets a timezone; with location services on GNOME keeps it current.
+automatic-timezone=true

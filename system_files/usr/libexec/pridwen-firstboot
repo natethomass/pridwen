@@ -330,6 +330,36 @@ def all_layouts():
     return out
 
 
+def all_timezones():
+    """(zone, zone with spaces, country codes) from zone1970.tab, US Central first."""
+    out = []
+    try:
+        with open("/usr/share/zoneinfo/zone1970.tab", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 3:
+                    continue
+                zone = parts[2]
+                out.append((zone, zone.replace("_", " "), parts[0]))
+    except OSError:
+        return []
+    out.sort(key=lambda t: (t[0] != "America/Chicago", t[1].lower()))
+    return out
+
+
+class TimezonePage(Page):
+    def __init__(self, wizard):
+        super().__init__(wizard, "Where are you?", "Sets the clock. With location services on, GNOME keeps it right when you travel.")
+        self.pick = PickList(all_timezones(), "America/Chicago")
+        self.body.append(self.pick)
+
+    @property
+    def value(self):
+        return self.pick.value
+
+
 class LanguagePage(Page):
     def __init__(self, wizard):
         super().__init__(wizard, "Language", "For menus, dates, and the Coach. Pridwen's lessons are in English for now.")
@@ -431,8 +461,9 @@ class Wizard(Adw.Application):
                                "auto")
         self.language = LanguagePage(self) if GnomeDesktop else None
         self.keyboard = KeyboardPage(self) if GnomeDesktop else None
-        self.pages = [p for p in [WelcomePage(self), self.language, self.keyboard, self.account, self.track, self.look,
-                                  GuidePage(self), PrivacyPage(self)] if p is not None]
+        self.timezone = TimezonePage(self) if all_timezones() else None
+        self.pages = [p for p in [WelcomePage(self), self.language, self.keyboard, self.timezone, self.account, self.track,
+                                  self.look, GuidePage(self), PrivacyPage(self)] if p is not None]
         for i, p in enumerate(self.pages):
             self.stack.add_named(p, f"p{i}")
         overlay = Gtk.Overlay(child=self.stack)
@@ -566,6 +597,10 @@ class Wizard(Adw.Application):
             user.set_language(loc)
             r = subprocess.run(["localectl", "set-locale", f"LANG={loc}"], capture_output=True, text=True)
             log(f"language {loc}: set on account; localectl rc={r.returncode} {r.stderr.strip()}")
+        if self.timezone is not None:
+            tz = self.timezone.value
+            r = subprocess.run(["timedatectl", "set-timezone", tz], capture_output=True, text=True)
+            log(f"timezone {tz}: timedatectl rc={r.returncode} {r.stderr.strip()}")
         if self.keyboard is not None:
             lid = self.keyboard.value
             gsettings_set("org.gnome.desktop.input-sources", "sources", f"[('xkb', '{lid}')]")

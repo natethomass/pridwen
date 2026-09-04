@@ -14,8 +14,11 @@ USAGE = """pridwen: the Coach's pull side.
   pridwen why                  explain the last failed command
   pridwen explain <command...> annotate a command, flag by flag
   pridwen learn [id]           read a lesson; no id lists the tree
+  pridwen why selinux          translate the newest SELinux denial
   pridwen quiet [1h|1d|forever|off]
+  pridwen quiet hours off|22:00-08:00
   pridwen status               daemon, rules, events, quiet state
+  pridwen dispatch test        send a test notification
   pridwen version
 
 Docs: /usr/share/doc/pridwen/coach.md
@@ -179,6 +182,22 @@ def cmd_learn(args, lib, store):
 def cmd_quiet(args, lib, store):
     cfg = config.load()
     arg = (args[0] if args else "1h").lower()
+    if arg == "hours":
+        # pridwen quiet hours off | 22:00-08:00
+        spec = (args[1] if len(args) > 1 else "").lower()
+        if spec in ("off", "none", ""):
+            cfg["quiet_hours"] = ""
+            config.save(cfg)
+            out(text.hint("Quiet hours are off. Nudges can arrive at any time (still capped per day).", None))
+            return 0
+        import re as _re
+        if not _re.fullmatch(r"\d{1,2}:\d{2}-\d{1,2}:\d{2}", spec):
+            out("usage: pridwen quiet hours off | HH:MM-HH:MM")
+            return 2
+        cfg["quiet_hours"] = spec
+        config.save(cfg)
+        out(text.hint(f"Quiet hours set to {spec}. Nudges wait until they end.", None))
+        return 0
     if arg in ("off", "on", "resume"):
         cfg["quiet_until"] = 0
         cfg["enabled"] = True
@@ -223,7 +242,33 @@ def cmd_status(args, lib, store):
     return 0
 
 
-COMMANDS = {"why": cmd_why, "explain": cmd_explain, "learn": cmd_learn, "quiet": cmd_quiet, "status": cmd_status}
+def cmd_dispatch(args, lib, store):
+    """pridwen dispatch test: send a test notification through the same path the daemon uses."""
+    if not args or args[0] != "test":
+        out("usage: pridwen dispatch test")
+        return 2
+    from .dispatch import Dispatch, HAVE_NOTIFY
+    d = Dispatch(store, lib)
+    cfg = config.load()
+    out(f"  libnotify  {'available' if HAVE_NOTIFY else 'missing (notify-send fallback)'}")
+    out(f"  allowed    {'yes' if d.allowed() else 'no (quiet, quiet hours ' + str(cfg.get('quiet_hours')) + ', or daily cap)'}")
+    d.send({"id": "test", "title": "Pridwen is listening", "body": "This is what a nudge looks like. Learn opens a lesson.", "lesson": "sudo-01"})
+    out("  sent       a test notification (not counted against the cap)")
+    if HAVE_NOTIFY:
+        # Keep the process alive briefly so action callbacks can arrive.
+        from gi.repository import GLib
+        loop = GLib.MainLoop()
+        GLib.timeout_add_seconds(20, loop.quit)
+        out("  waiting    20 s for a button press; Ctrl-C to skip")
+        try:
+            loop.run()
+        except KeyboardInterrupt:
+            pass
+    return 0
+
+
+COMMANDS = {"why": cmd_why, "explain": cmd_explain, "learn": cmd_learn, "quiet": cmd_quiet, "status": cmd_status,
+            "dispatch": cmd_dispatch}
 
 
 def main(argv):

@@ -4,7 +4,7 @@
 
 set -ouex pipefail
 
-PRIDWEN_VERSION="0.2.1-m1"
+PRIDWEN_VERSION="0.3.0-m2"
 IMAGE_REF="ghcr.io/natethomass/pridwen"
 
 ### 1. Overlay files from system_files/ onto /

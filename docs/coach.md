@@ -146,7 +146,8 @@ crossed. Each nudge fires once per install unless `repeat: <seconds>` is set.
   body: A new Pridwen image is ready for the next boot. See what changed?
 ```
 
-Notifications carry actions: Learn (`pridwen learn <lesson>` in Academy later,
+A nudge that is earned during quiet hours or over the cap is retried on later commands
+until it is sent. Notifications carry actions: Learn (`pridwen learn <lesson>` in Academy later,
 terminal now), Snooze (a day), Not this again (disables that nudge). Cap: 3 per
 day. Quiet hours default 22:00–08:00. `pridwen quiet` silences both Coach and
 Dispatch.
@@ -158,8 +159,11 @@ Dispatch.
 | `pridwen why` | Explains the last failed command: the matching rule's `why`, else a recent SELinux denial translated, else a generic reading of the exit code |
 | `pridwen explain <command...>` | Annotates the command word and each flag from `explain/<cmd>.yaml`, falling back to the man page, and names the tree node |
 | `pridwen learn [id]` | Prints a lesson; with no id, lists nodes and lessons with what has fired |
+| `pridwen why selinux` | Translates the newest SELinux denial (last 24 h) |
 | `pridwen quiet [1h\|1d\|forever\|off]` | Silence the coach |
+| `pridwen quiet hours off\|HH:MM-HH:MM` | Change or drop Dispatch's quiet hours (default 22:00-08:00) |
 | `pridwen status` | Daemon, rules loaded, events stored, quiet state |
+| `pridwen dispatch test` | Send a test notification through Dispatch (not counted against the cap) |
 
 ## Lessons (`lessons/<id>.md`)
 

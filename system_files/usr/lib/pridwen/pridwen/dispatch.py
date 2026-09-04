@@ -72,7 +72,13 @@ class Dispatch:
                 continue
             count = self.store.bump(f"nudge:{n['id']}")
             threshold = int((n.get("count") or {}).get("threshold", 1))
-            if count == threshold or (count > threshold and n.get("repeat") and count % threshold == 0):
+            if count < threshold:
+                continue
+            # Once earned, a nudge that was held (quiet hours, daily cap) is
+            # retried on later commands until it is actually sent.
+            st = self.store.nudge(n["id"])
+            unsent = st is None or not st["sent_ts"]
+            if unsent or (n.get("repeat") and count % threshold == 0):
                 self.maybe_send(n)
 
     def on_event(self, event_name, extra=None):
