@@ -24,6 +24,9 @@ dnf5 install -y \
     darkman \
     python3-gobject
 
+# Fedora's corner watermark extension has no place on a Pridwen desktop.
+dnf5 remove -y gnome-shell-extension-background-logo || true
+
 ### 3. Identity
 # Keep ID=fedora: tooling keys on it. Brand everything else.
 sed -i \
