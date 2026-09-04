@@ -9,8 +9,9 @@ GitHub Actions, pushed to `ghcr.io/natethomass/pridwen`, and turned into install
 [bootc-image-builder](https://osbuild.org/docs/bootc/). Installed machines update from the
 registry with `bootc upgrade`. This is the [Universal Blue](https://universal-blue.org) pattern.
 
-> Status: **M0 Foundation.** Base image builds, publishes, and produces an ISO, a qcow2, and a
-> vmdk. No Pridwen look or teaching layer yet. See the roadmap at the bottom.
+> Status: **M0 done, M1 Look in progress.** The image builds, signs, publishes, installs from
+> its ISO, and upgrades with `bootc upgrade`. M1 is adding the Pridwen look: wallpapers and
+> GNOME defaults first, then Plymouth, GDM, and the first-boot wizard. Roadmap at the bottom.
 
 ## Layout
 
@@ -55,7 +56,7 @@ qm set 9000 --scsihw virtio-scsi-pci --scsi0 local-lvm:vm-9000-disk-1 --boot ord
 **Verify after install.**
 
 ```bash
-cat /etc/os-release | head -3        # PRETTY_NAME="Pridwen OS 0.1.0-m0"
+grep PRETTY_NAME /etc/os-release       # PRETTY_NAME="Pridwen OS 0.2.0-m1"
 sudo bootc status                    # Booted image: ghcr.io/natethomass/pridwen:latest
 sudo bootc upgrade --check           # sees newer builds once CI has pushed one
 ```
@@ -66,11 +67,9 @@ sudo bootc upgrade --check           # sees newer builds once CI has pushed one
 - [x] CI: build, rechunk, tag, push to GHCR; signing step ready (needs the secret below)
 - [x] CI: ISO, qcow2, vmdk via bootc-image-builder
 - [x] Installer creates no user; first boot creates one
-- [ ] **You:** make the GHCR package public (Packages → pridwen → Package settings →
-      Change visibility). Installs and CI pulls need it.
-- [ ] **You:** add the signing secret (below). Builds work without it; images are unsigned until then.
-- [ ] Boot the ISO in VirtualBox, install, create user, run `bootc status`
-- [ ] Push a trivial change, wait for CI, run `sudo bootc upgrade` on the VM, confirm the new build
+- [x] GHCR package public, signing secret set, images signed
+- [x] Boot the ISO in VirtualBox, install, create user, run `bootc status`
+- [x] Push a change, wait for CI, `sudo bootc upgrade` on the VM lands the new build
 
 ## Image signing
 

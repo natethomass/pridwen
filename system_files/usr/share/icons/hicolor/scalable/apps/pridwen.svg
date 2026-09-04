@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Pridwen mark, v0: a heater shield in Cream Glass night colours with a cream
+     chevron. Placeholder until the owner signs off on a final mark. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2C324E"/>
+      <stop offset="1" stop-color="#111318"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.16"/>
+    </linearGradient>
+  </defs>
+  <!-- shield body -->
+  <path d="M64 8 L108 22 V60 C108 88 90 108 64 120 C38 108 20 88 20 60 V22 Z"
+        fill="url(#shield)"/>
+  <!-- glass rim -->
+  <path d="M64 8 L108 22 V60 C108 88 90 108 64 120 C38 108 20 88 20 60 V22 Z"
+        fill="none" stroke="url(#rim)" stroke-width="2"/>
+  <!-- cream chevron: the shield's chief, also a rising "P" stroke -->
+  <path d="M34 66 L64 40 L94 66 L94 80 L64 54 L34 80 Z" fill="#F2EDE3"/>
+  <!-- slate keel -->
+  <path d="M58 84 H70 V102 L64 108 L58 102 Z" fill="#5F7E9B"/>
+</svg>

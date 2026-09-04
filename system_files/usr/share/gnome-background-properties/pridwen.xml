@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">
+<wallpapers>
+  <wallpaper deleted="false">
+    <name>Pridwen Cream Glass</name>
+    <filename>/usr/share/backgrounds/pridwen/pridwen-day.png</filename>
+    <filename-dark>/usr/share/backgrounds/pridwen/pridwen-night.png</filename-dark>
+    <options>zoom</options>
+    <shade_type>solid</shade_type>
+    <pcolor>#F2EDE3</pcolor>
+    <scolor>#111318</scolor>
+  </wallpaper>
+</wallpapers>

@@ -1,0 +1,36 @@
+# Pridwen OS desktop defaults. Users can change any of these; nothing is locked.
+# Compiled into the "distro" system database by `dconf update` at image build.
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/pridwen/pridwen-day.png'
+picture-uri-dark='file:///usr/share/backgrounds/pridwen/pridwen-night.png'
+picture-options='zoom'
+primary-color='#F2EDE3'
+secondary-color='#111318'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/pridwen/pridwen-night.png'
+picture-options='zoom'
+primary-color='#111318'
+
+[org/gnome/desktop/interface]
+# Slate is GNOME's built-in accent closest to Cream Glass chrome (#5F7E9B).
+accent-color='slate'
+color-scheme='default'
+clock-show-weekday=true
+show-battery-percentage=true
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,close'
+
+[org/gnome/desktop/peripherals/touchpad]
+tap-to-click=true
+
+[org/gnome/settings-daemon/plugins/color]
+night-light-enabled=true
+
+[org/gnome/shell]
+favorite-apps=['org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Settings.desktop']
+
+[org/gnome/mutter]
+edge-tiling=true

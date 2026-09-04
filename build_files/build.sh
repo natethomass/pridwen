@@ -4,7 +4,7 @@
 
 set -ouex pipefail
 
-PRIDWEN_VERSION="0.1.1-m0"
+PRIDWEN_VERSION="0.2.0-m1"
 IMAGE_REF="ghcr.io/natethomass/pridwen"
 
 ### 1. Overlay files from system_files/ onto /
@@ -30,7 +30,9 @@ sed -i \
     -e 's|^HOME_URL=.*|HOME_URL="https://github.com/natethomass/pridwen"|' \
     -e 's|^SUPPORT_URL=.*|SUPPORT_URL="https://github.com/natethomass/pridwen/issues"|' \
     -e 's|^BUG_REPORT_URL=.*|BUG_REPORT_URL="https://github.com/natethomass/pridwen/issues"|' \
+    -e 's|^LOGO=.*|LOGO=pridwen|' \
     /usr/lib/os-release
+grep -q "^LOGO=" /usr/lib/os-release || echo "LOGO=pridwen" >> /usr/lib/os-release
 
 mkdir -p /usr/share/pridwen
 echo "${PRIDWEN_VERSION}" > /usr/share/pridwen/VERSION
@@ -50,5 +52,12 @@ cat > /usr/share/ublue-os/image-info.json <<EOF
 }
 EOF
 
-### 5. Services
+### 5. Look (M1)
+# Compile the dconf defaults in /etc/dconf/db/distro.d into the distro database.
+# Fedora's /etc/dconf/profile/user already reads system-db:distro.
+dconf update
+# Register the mark with the icon cache so Settings > About and GDM can find it.
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+
+### 6. Services
 systemctl enable podman.socket
