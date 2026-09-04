@@ -83,6 +83,8 @@ CSS = """/* Pridwen OS installer look. Dropped in by the kickstart %pre; see scr
     color: #F2EDE3;
 }
 #nav-box label { color: #F2EDE3; }
+/* The keyboard-layout badge keeps its white pill, so its label stays ink. */
+#anaconda-layout-label { color: #24211D; }
 """
 
 
