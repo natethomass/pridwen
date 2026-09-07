@@ -203,8 +203,11 @@ structure). Slices:
    `track`, `journal`, `posture`. `pridwen learn --open` and notification Learn open Academy.
 2. **Content**: 20 Core missions (`missions/core-NN-*.yaml`, host target, no sudo), `tracks/core.yaml`,
    `posture.yaml` (10 controls; ones not yet shipped carry `note` and show as Planned).
-3. **Verify in VM**: Academy opens from the dock, a mission verifies from the app and from the CLI,
-   node and track state update, the journal shows Coach firings, posture shows pass/planned.
+3. **Verify in VM** (2026-09-07): Academy opens from the dock and the owner worked through it
+   ("awesome"). Check my work stalled at "Checking…": the worker thread called the store and
+   SQLite refused the cross-thread use, so the callback never fired. Fixed: checks run off-thread,
+   recording happens on the main thread, crashes surface in the status label. Rule: never touch
+   `Store` from a thread in Academy. Remaining: mission verifies from the app, journal, posture.
 
 ## The mark
 

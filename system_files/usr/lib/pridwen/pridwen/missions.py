@@ -251,14 +251,23 @@ class Progress:
             return "verified"
         return "in-progress" if row["attempts"] else "available"
 
-    def check(self, mid, allow_sudo=False):
+    def run_checks(self, mid, allow_sudo=False):
+        """Run the checks only (safe from a worker thread: touches no store)."""
         m = self.cat.missions[mid]
-        results = [(c.get("id", f"check{i}"), *run_check(c, allow_sudo)) for i, c in enumerate(m.checks)]
+        return [(c.get("id", f"check{i}"), *run_check(c, allow_sudo)) for i, c in enumerate(m.checks)]
+
+    def record(self, mid, results):
+        """Record an attempt (main thread: uses the store)."""
+        m = self.cat.missions[mid]
         passed = all(ok for _, ok, _ in results)
         self.store.mission_attempt(mid, passed)
         summary = "verified" if passed else "; ".join(msg for _, ok, msg in results if not ok)[:300]
         self.store.journal("mission", mid, summary, m.node)
-        return passed, results
+        return passed
+
+    def check(self, mid, allow_sudo=False):
+        results = self.run_checks(mid, allow_sudo)
+        return self.record(mid, results), results
 
     def node_state(self, nid):
         node = self.lib.node(nid)

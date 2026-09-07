@@ -41,7 +41,9 @@ class Store:
     def __init__(self, path=None):
         self.path = path or os.path.join(data_dir(), "pridwen.db")
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        self.db = sqlite3.connect(self.path, timeout=2.0)
+        # Academy touches the store from GLib callbacks on the main thread only;
+        # the flag is a safety net for the odd helper thread, not a licence.
+        self.db = sqlite3.connect(self.path, timeout=2.0, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self.db.execute("PRAGMA journal_mode=WAL")

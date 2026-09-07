@@ -340,12 +340,21 @@ class Academy(Adw.Application):
             status.set_label("Checking…")
 
             def work():
-                passed, res = self.prog.check(mid, allow_sudo=False)
-                GLib.idle_add(done, passed, res)
+                # Only the checks run off the main thread; the store (SQLite,
+                # main-thread only) is touched in done().
+                try:
+                    res = self.prog.run_checks(mid, allow_sudo=False)
+                except Exception as e:  # noqa: BLE001
+                    res = e
+                GLib.idle_add(done, res)
 
-            def done(passed, res):
+            def done(res):
+                if isinstance(res, Exception):
+                    status.set_label(f"The checker crashed: {res!r}. Try `pridwen mission check {mid}` in a terminal.")
+                    check.set_sensitive(True)
+                    return False
+                passed = self.prog.record(mid, res)
                 rows = {}
-                child = results.get_first_child()
                 # PreferencesGroup nests rows; walk to find our ActionRows.
                 for row in self._iter_rows(results):
                     rows[row.check.get("id", "check")] = row
