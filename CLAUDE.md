@@ -207,7 +207,10 @@ structure). Slices:
    ("awesome"). Check my work stalled at "Checking…": the worker thread called the store and
    SQLite refused the cross-thread use, so the callback never fired. Fixed: checks run off-thread,
    recording happens on the main thread, crashes surface in the status label. Rule: never touch
-   `Store` from a thread in Academy. Remaining: mission verifies from the app, journal, posture.
+   `Store` from a thread in Academy. Driven from the host on the same image: `pridwen mission
+   check core-01-terminal` verified (4/4), node Terminal -> verified, Files unlocked, journal
+   shows mission results and Coach firings. Remaining: Check from the app (fix in cf286d5),
+   posture panel, and the owner working the Core track end to end.
 
 ## The mark
 
