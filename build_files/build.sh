@@ -103,9 +103,10 @@ systemctl --global enable darkman.service
 dnf5 install -y gcc
 gcc -O2 -Wall -Wextra -o /usr/libexec/pridwen-coach-send /ctx/coach-send.c
 dnf5 remove -y gcc
-chmod 0755 /usr/libexec/pridwen-coach-send /usr/libexec/pridwend /usr/bin/pridwen
+chmod 0755 /usr/libexec/pridwen-coach-send /usr/libexec/pridwend /usr/bin/pridwen /usr/bin/pridwen-academy
 python3 -m compileall -q /usr/lib/pridwen
 install -Dm644 /ctx/docs/coach.md /usr/share/doc/pridwen/coach.md
+install -Dm644 /ctx/docs/academy.md /usr/share/doc/pridwen/academy.md
 # Interactive shells source the hook. /etc/bashrc is read by every interactive
 # bash; Fedora's /etc/zshrc by every interactive zsh.
 cat >> /etc/bashrc <<'EOF'

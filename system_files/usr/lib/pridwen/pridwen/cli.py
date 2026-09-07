@@ -19,6 +19,10 @@ USAGE = """pridwen: the Coach's pull side.
   pridwen quiet hours off|22:00-08:00
   pridwen status               daemon, rules, events, quiet state
   pridwen dispatch test        send a test notification
+  pridwen mission list [track] | show|start|check|reset <id>
+  pridwen track [id]           track progress
+  pridwen journal [note ...]   the journal, or add a note
+  pridwen posture              the hardening baseline, pass/drift
   pridwen version
 
 Docs: /usr/share/doc/pridwen/coach.md
@@ -166,7 +170,12 @@ def cmd_learn(args, lib, store):
         lessons = lib.node(target).get("lessons") or []
         target = lessons[0] if lessons else target
     if open_terminal:
-        # From a notification action: open a terminal with the lesson.
+        # From a notification action: Academy shows the lesson; a terminal is the fallback.
+        try:
+            subprocess.Popen(["/usr/bin/pridwen-academy", target], start_new_session=True)
+            return 0
+        except OSError:
+            pass
         for term in (["ptyxis", "--", "sh", "-c"], ["gnome-terminal", "--", "sh", "-c"]):
             try:
                 subprocess.Popen(term + [f"/usr/bin/pridwen learn {target}; echo; read -p 'Enter to close' _"])
@@ -267,8 +276,118 @@ def cmd_dispatch(args, lib, store):
     return 0
 
 
+STATE_MARK = {"verified": "●", "in-progress": "◐", "available": "○", "locked": "·"}
+
+
+def _progress(lib, store):
+    from .missions import Catalog, Progress
+    cat = Catalog()
+    return cat, Progress(store, lib, cat)
+
+
+def cmd_mission(args, lib, store):
+    cat, prog = _progress(lib, store)
+    if cat.errors:
+        for e in cat.errors:
+            out(f"  ! {e}")
+    sub = args[0] if args else "list"
+    if sub == "list":
+        tid = args[1] if len(args) > 1 else None
+        ids = cat.tracks[tid].missions if tid and tid in cat.tracks else sorted(cat.missions)
+        for mid in ids:
+            m = cat.missions.get(mid)
+            if m:
+                out(f"  {STATE_MARK[prog.mission_state(mid)]} {mid:<28} {m.title}  ({m.minutes} min, {m.node})")
+        return 0
+    if len(args) < 2 or args[1] not in cat.missions:
+        out("usage: pridwen mission list [track] | show|check|reset|start <id>")
+        return 2
+    m = cat.missions[args[1]]
+    if sub == "show":
+        out(text.render(f"# {m.title}\n\n{m.brief}"))
+        out(text.para("Steps:"))
+        for i, s in enumerate(m.steps, 1):
+            out(text.render(f"{i}. {s}"))
+        out(text.para(f"Checks: {len(m.checks)}  ·  node {m.node}  ·  about {m.minutes} min  ·  state {prog.mission_state(m.id)}"))
+        return 0
+    if sub == "start":
+        from .missions import run_shell
+        rc, msg = run_shell(m.setup)
+        out(text.hint("Mission set up. Read the brief with `pridwen mission show " + m.id + "`.", None) if rc == 0 else text.hint(f"Setup failed: {msg}", None))
+        return 0 if rc == 0 else 1
+    if sub == "reset":
+        from .missions import run_shell
+        rc, msg = run_shell(m.cleanup)
+        store.mission_reset(m.id)
+        out(text.hint("Mission reset." if rc == 0 else f"Cleanup returned {rc}: {msg}", None))
+        return 0
+    if sub == "check":
+        allow_sudo = "--sudo" in args
+        passed, results = prog.check(m.id, allow_sudo=allow_sudo)
+        use_colour = text.colour_enabled()
+        for cid, ok, msg in results:
+            mark = (f"{text.SAGE}✓{text.RESET}" if ok else f"{text.CLAY}✗{text.RESET}") if use_colour else ("ok " if ok else "no ")
+            out(text.wrap_coloured(text.code_spans(msg, use_colour=use_colour), text.width(), f"  {mark} {cid}: ", "       "))
+        out()
+        if passed:
+            out(text.hint(f"Verified: {m.title}. Node `{m.node}` is now {prog.node_state(m.node)}.", None))
+        else:
+            out(text.hint("Not yet. Fix what is marked and check again; `pridwen mission show " + m.id + "` has hints.", None))
+        return 0 if passed else 1
+    out("usage: pridwen mission list [track] | show|check|reset|start <id>")
+    return 2
+
+
+def cmd_track(args, lib, store):
+    cat, prog = _progress(lib, store)
+    ids = [args[0]] if args and args[0] in cat.tracks else sorted(cat.tracks)
+    for tid in ids:
+        t = cat.tracks[tid]
+        p = prog.track_progress(tid)
+        out(f"  {t.title}: {p['verified']}/{p['total']} nodes verified")
+        for n in t.nodes:
+            out(f"    {STATE_MARK[p['nodes'][n]]} {lib.node(n).get('title', n)}")
+        if p["next"]:
+            out(text.para(f"Next up: {cat.missions[p['next']].title}  ·  pridwen mission show {p['next']}"))
+        out()
+    return 0
+
+
+def cmd_journal(args, lib, store):
+    if args:
+        store.journal("note", None, " ".join(args))
+        out(text.hint("Noted.", None))
+        return 0
+    day = None
+    for e in store.journal_entries(60):
+        d = time.strftime("%a %d %b", time.localtime(e["ts"]))
+        if d != day:
+            day = d
+            out(f"\n  {d}")
+        t = time.strftime("%H:%M", time.localtime(e["ts"]))
+        kind = {"coach": "coach", "mission": "mission", "note": "note"}.get(e["kind"], e["kind"])
+        out(text.wrap_coloured(text.code_spans(e["text"], use_colour=text.colour_enabled()), text.width(), f"    {t}  {kind:<8}", "                  "))
+    return 0
+
+
+def cmd_posture(args, lib, store):
+    from .posture import evaluate
+    use_colour = text.colour_enabled()
+    for c in evaluate():
+        if c["ok"]:
+            mark = f"{text.SAGE}pass {text.RESET}" if use_colour else "pass "
+        elif c.get("expected_drift"):
+            mark = f"{text.GREY}later{text.RESET}" if use_colour else "later"
+        else:
+            mark = f"{text.CLAY}drift{text.RESET}" if use_colour else "drift"
+        out(f"  {mark} {c.get('title', c['id']):<32} {'' if c['ok'] else c['message'][:70]}")
+    out(text.para("later = planned for M6 and not yet shipped in the image. pridwen learn <lesson> explains each control."))
+    return 0
+
+
 COMMANDS = {"why": cmd_why, "explain": cmd_explain, "learn": cmd_learn, "quiet": cmd_quiet, "status": cmd_status,
-            "dispatch": cmd_dispatch}
+            "dispatch": cmd_dispatch, "mission": cmd_mission, "track": cmd_track, "journal": cmd_journal,
+            "posture": cmd_posture}
 
 
 def main(argv):

@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS firings (rule TEXT PRIMARY KEY, ts REAL NOT NULL, n I
 CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS nudges (id TEXT PRIMARY KEY, sent_ts REAL, snoozed_until REAL, disabled INTEGER NOT NULL DEFAULT 0, n INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS missions (id TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, last_ts REAL, verified_ts REAL);
+CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY, ts REAL NOT NULL, kind TEXT NOT NULL, ref TEXT, text TEXT NOT NULL, node TEXT);
+CREATE INDEX IF NOT EXISTS journal_ts ON journal(ts);
+CREATE TABLE IF NOT EXISTS touched (node TEXT PRIMARY KEY, ts REAL NOT NULL);
 """
 
 
@@ -120,6 +124,42 @@ class Store:
 
     def nudges_sent_since(self, ts):
         return self.db.execute("SELECT COUNT(*) FROM nudges WHERE sent_ts > ?", (ts,)).fetchone()[0]
+
+    # ---- missions, journal, touched nodes (Academy) ---------------------------
+    def mission(self, mid):
+        return self.db.execute("SELECT * FROM missions WHERE id=?", (mid,)).fetchone()
+
+    def mission_attempt(self, mid, passed):
+        now = time.time()
+        self.db.execute(
+            "INSERT INTO missions (id, attempts, last_ts, verified_ts) VALUES (?, 1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET attempts=attempts+1, last_ts=excluded.last_ts, "
+            "verified_ts=COALESCE(missions.verified_ts, excluded.verified_ts)",
+            (mid, now, now if passed else None))
+        self.db.commit()
+
+    def mission_reset(self, mid):
+        self.db.execute("DELETE FROM missions WHERE id=?", (mid,))
+        self.db.commit()
+
+    def missions_verified(self):
+        return {r["id"] for r in self.db.execute("SELECT id FROM missions WHERE verified_ts IS NOT NULL")}
+
+    def journal(self, kind, ref, text, node=None):
+        self.db.execute("INSERT INTO journal (ts, kind, ref, text, node) VALUES (?,?,?,?,?)",
+                        (time.time(), kind, ref, text, node))
+        self.db.commit()
+
+    def journal_entries(self, n=200):
+        return self.db.execute("SELECT * FROM journal ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+
+    def touch_node(self, node):
+        self.db.execute("INSERT INTO touched (node, ts) VALUES (?, ?) ON CONFLICT(node) DO UPDATE SET ts=excluded.ts",
+                        (node, time.time()))
+        self.db.commit()
+
+    def node_touched(self, node):
+        return self.db.execute("SELECT 1 FROM touched WHERE node=?", (node,)).fetchone() is not None
 
     # ---- meta ---------------------------------------------------------------
     def get(self, key, default=None):

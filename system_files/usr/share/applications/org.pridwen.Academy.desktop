@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Academy
+GenericName=Skill tree
+Comment=Pridwen's skill tree, missions, journal, and posture
+Exec=pridwen-academy %u
+Icon=pridwen
+Terminal=false
+Categories=Education;GNOME;GTK;
+Keywords=pridwen;learn;linux;rhcsa;security;
+StartupNotify=true
+DBusActivatable=false

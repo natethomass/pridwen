@@ -1,0 +1,9 @@
+#!/usr/bin/python3
+"""Pridwen Academy: the skill-tree app. See /usr/share/doc/pridwen/academy.md."""
+import sys
+
+sys.path.insert(0, "/usr/lib/pridwen")
+from pridwen.academy.app import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -30,7 +30,7 @@ tap-to-click=true
 night-light-enabled=true
 
 [org/gnome/shell]
-favorite-apps=['org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Settings.desktop']
+favorite-apps=['org.gnome.Ptyxis.desktop', 'org.pridwen.Academy.desktop', 'org.gnome.Nautilus.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Settings.desktop']
 
 [org/gnome/mutter]
 edge-tiling=true

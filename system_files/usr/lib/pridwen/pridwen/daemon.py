@@ -114,10 +114,17 @@ class Daemon:
             return None
         self.store.record_firing(rule.id)
         self.store.set_event_rule(eid, rule.id)
+        from .rules import fill
+        hint = fill(rule.hint, groups)
+        # Academy's journal and node state see every firing, quiet or not.
+        try:
+            self.store.journal("coach", rule.id, f"{cmd[:120]}  ->  {hint}", rule.node)
+            self.store.touch_node(rule.node)
+        except Exception as e:  # noqa: BLE001
+            log(f"journal error: {e!r}")
         if quiet:
             return None
-        from .rules import fill
-        return text.hint(fill(rule.hint, groups), rule.lesson, cols=100, use_colour=True)
+        return text.hint(hint, rule.lesson, cols=100, use_colour=True)
 
     def background_checks(self, exit_code):
         """Cheap, throttled checks after failures: new SELinux denial? staged update?"""
