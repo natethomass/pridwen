@@ -192,6 +192,20 @@ Decisions: bash stays the default login shell (zsh hook shipped too); rules matc
 command with a leading sudo stripped (`not_sudo` distinguishes); output is never captured,
 probes look at the system instead; secrets are scrubbed before storage.
 
+## M3 status (2026-09-07, in progress)
+
+Design: `docs/academy.md` (mission schema, 19 check types, track schema, posture data, app
+structure). Slices:
+
+1. **Engine + app** (14da2bf): `missions.py` (Catalog, run_check, Progress: node state is
+   derived from required missions and `requires`), `posture.py`, `academy/` (GTK4 + libadwaita:
+   Tree, Node, Lesson, Mission with hints and Check, Tracks, Journal, Posture), CLI `mission`,
+   `track`, `journal`, `posture`. `pridwen learn --open` and notification Learn open Academy.
+2. **Content**: 20 Core missions (`missions/core-NN-*.yaml`, host target, no sudo), `tracks/core.yaml`,
+   `posture.yaml` (10 controls; ones not yet shipped carry `note` and show as Planned).
+3. **Verify in VM**: Academy opens from the dock, a mission verifies from the app and from the CLI,
+   node and track state update, the journal shows Coach firings, posture shows pass/planned.
+
 ## The mark
 
 The Pridwen mark is "Chief": a heater shield with a chevron cut out, chosen by the owner on
