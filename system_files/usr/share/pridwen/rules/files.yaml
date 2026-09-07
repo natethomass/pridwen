@@ -238,3 +238,25 @@
   man: [rm(1), bash(1)]
   cooldown: 3600
   priority: 40
+
+- id: file-read-missing
+  node: files
+  lesson: file-01
+  when:
+    command: '^(cat|less|more|head|tail|bat|vim?|nvim|nano|wc|stat|file)\s+(-\S+\s+)*(?P<path>[^-\s]\S*)\s*$'
+    exit: [1, 2]
+    probe: missing:{path}
+  hint: >-
+    There is no `{path}` from here. `ls` shows what this directory holds; `ls -d {path}*` catches a near-miss, and `pwd` confirms where you are.
+  why: |
+    The shell handed `{path}` to `{cmd}`, which asked the kernel to open it and got
+    ENOENT: no such file or directory. Paths are resolved from the current directory
+    unless they start with `/`, so the usual causes are a typo, a different working
+    directory than you think, or a file that was moved.
+    Ways forward:
+      1. `ls -la`                     see what is actually here
+      2. `ls -d {path}*`              look for a near-miss in the name
+      3. `find ~ -name '{path}'`      search your home for it by name
+  man: [ls(1), find(1)]
+  cooldown: 900
+  priority: 3
