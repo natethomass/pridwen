@@ -1,0 +1,53 @@
+id: core-13-firewall
+node: firewall
+title: Read the wall
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  You are about to take this laptop to a coffee shop. Everything listening on
+  it, from the Coach's socket to whatever a Flatpak opened, will be sitting on
+  a network with strangers. The firewall is what decides which of those
+  listeners a stranger can reach, and it decides by zone.
+
+  This mission changes nothing; it reads. Find the default zone and write its
+  name down. List everything the active zone permits and pick out its target,
+  the one word that says what happens to a packet nothing else matched. List
+  the zones firewalld knows and find `drop`, the strictest one and the one
+  Pridwen intends to boot into. Then put this next to the listening sockets
+  you saved in the networking mission and decide, for each, whether someone at
+  the next table could reach it. If the answer is ever yes and you did not
+  mean it, the next lesson is how to open exactly one thing and nothing more.
+steps:
+  - Save the name of the default zone in `~/pridwen/answers/fw-default-zone.txt`.
+  - Save everything the active zone permits in `~/pridwen/answers/fw-list-all.txt`, then write its target on its own in `~/pridwen/answers/fw-target.txt`.
+  - Save the names of all zones firewalld knows in `~/pridwen/answers/fw-zones.txt` and find `drop`.
+  - Compare the listening sockets from the networking mission with what the zone allows in, and decide which are reachable from another machine.
+hints:
+  - "`firewall-cmd --get-default-zone`, `--list-all` and `--get-zones` are reads; firewalld may still ask for authentication, and `sudo` in front is the honest answer."
+  - "In `--list-all` output the `target:` line says what happens to packets nothing else matched; `DROP` discards silently, `default` rejects with a reply."
+  - "A socket listening on `0.0.0.0` or `*` is reachable from outside only if the zone lists its service or port."
+checks:
+  - id: default-zone
+    type: path_contains
+    path: "{home}/pridwen/answers/fw-default-zone.txt"
+    regex: '^[A-Za-z][\w-]*\s*$'
+    fail: "`fw-default-zone.txt` should hold just the zone name on one line."
+  - id: list-all
+    type: path_contains
+    path: "{home}/pridwen/answers/fw-list-all.txt"
+    regex: 'target:'
+    fail: "`fw-list-all.txt` should be `--list-all` output, which includes a `target:` line."
+  - id: target
+    type: path_contains
+    path: "{home}/pridwen/answers/fw-target.txt"
+    regex: '^(DROP|ACCEPT|REJECT|default|%%REJECT%%)\s*$'
+    fail: "`fw-target.txt` should hold the zone's target word alone: DROP, ACCEPT, REJECT or default."
+  - id: zones
+    type: path_contains
+    path: "{home}/pridwen/answers/fw-zones.txt"
+    regex: '\bdrop\b'
+    fail: "`fw-zones.txt` should list every zone, and `drop` is always one of them."
+cleanup: |
+  rm -f ~/pridwen/answers/fw-default-zone.txt ~/pridwen/answers/fw-list-all.txt ~/pridwen/answers/fw-target.txt ~/pridwen/answers/fw-zones.txt

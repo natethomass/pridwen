@@ -1,0 +1,55 @@
+id: core-16-ssh
+node: ssh
+title: Make a key
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  The Range labs, a Raspberry Pi on the shelf, a server at work: every one of
+  them will ask you to prove who you are, and the answer that holds up is a
+  key pair, not a password typed over the network. You make the pair once.
+  The private half never leaves this machine; the public half is what you hand
+  out.
+
+  Make yours now, before you need it. Use the modern key type, give it a
+  comment that names you and this machine so you can recognise it in a list of
+  authorized keys a year from now, and protect it with a passphrase. Then look
+  at what you made. One of the two files is a secret, and ssh will refuse to
+  use it if anyone else on the machine could read it, so check the modes of
+  both the key and the directory it lives in. Finish by printing the key's
+  fingerprint, the short string you will compare when a server shows it back
+  to you.
+steps:
+  - Generate an ed25519 key pair at `~/.ssh/pridwen_ed25519` with a comment that names you and this machine, and a passphrase you will remember.
+  - Look at both files and decide which one is the secret.
+  - Make sure `~/.ssh` is closed to everyone but you and the private key is readable by you alone.
+  - Print the key's fingerprint and save it in `~/pridwen/answers/ssh-fingerprint.txt`.
+hints:
+  - "`ssh-keygen -t ed25519 -C \"a comment\" -f ~/.ssh/pridwen_ed25519` puts the pair where you ask instead of under the default name."
+  - "`chmod 700 ~/.ssh` and `chmod 600 ~/.ssh/pridwen_ed25519`; ssh refuses a private key that others can read."
+  - "`ssh-keygen -lf ~/.ssh/pridwen_ed25519.pub` prints the fingerprint, the comment and the key type."
+checks:
+  - id: public-key
+    type: path_contains
+    path: "{home}/.ssh/pridwen_ed25519.pub"
+    regex: '^ssh-ed25519 [A-Za-z0-9+/=]+ \S+'
+    fail: "`pridwen_ed25519.pub` should hold one line: `ssh-ed25519`, the key, then a comment. The comment is the part that is missing or empty."
+  - id: private-mode
+    type: path_mode
+    path: "{home}/.ssh/pridwen_ed25519"
+    mode: "0600"
+    fail: "The private key has mode {actual}; it must be 0600."
+  - id: ssh-dir-mode
+    type: path_mode
+    path: "{home}/.ssh"
+    mode: "0700"
+    fail: "`~/.ssh` has mode {actual}; it should be 0700."
+  - id: fingerprint
+    type: path_contains
+    path: "{home}/pridwen/answers/ssh-fingerprint.txt"
+    regex: 'SHA256:\S+.*\(ED25519\)'
+    fail: "`ssh-fingerprint.txt` should be the `ssh-keygen -lf` line: bits, a `SHA256:` fingerprint, the comment, and `(ED25519)`."
+cleanup: |
+  rm -f ~/.ssh/pridwen_ed25519 ~/.ssh/pridwen_ed25519.pub
+  rm -f ~/pridwen/answers/ssh-fingerprint.txt

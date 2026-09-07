@@ -1,0 +1,49 @@
+# Pridwen Core: the track everyone starts on. Eighteen nodes, twenty missions,
+# all on the host as the learner, no sudo needed to check. The capstone breaks
+# things in the learner's own home and asks for them back.
+
+id: core
+title: Pridwen Core
+lede: Daily-drive Linux and fix it when it breaks.
+maps_to: Living on Pridwen without a safety net
+nodes:
+  - terminal
+  - files
+  - permissions
+  - users
+  - processes
+  - services
+  - packages
+  - networking
+  - storage
+  - boot
+  - sudo
+  - firewall
+  - selinux
+  - logging
+  - ssh
+  - containers
+  - scripting
+  - timers
+missions:
+  - core-01-terminal
+  - core-02-files
+  - core-03-find
+  - core-04-permissions
+  - core-05-users
+  - core-06-processes
+  - core-07-services
+  - core-08-packages
+  - core-09-networking
+  - core-10-storage
+  - core-11-boot
+  - core-12-sudo
+  - core-13-firewall
+  - core-14-selinux
+  - core-15-logging
+  - core-16-ssh
+  - core-17-containers
+  - core-18-scripting
+  - core-19-timers
+  - core-20-fix-this-host
+capstone: core-20-fix-this-host

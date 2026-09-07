@@ -1,0 +1,59 @@
+id: core-09-networking
+node: networking
+title: Map your own connection
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  The wifi icon says connected, and that is all it says. When a page will not
+  load, the icon cannot tell you whether the address is missing, the route is
+  gone, or the name never resolved. Four commands can, and each answers one of
+  those questions.
+
+  Draw the map of your own connection while it works, so you know what normal
+  looks like. Save the one-line-per-interface address listing and find your
+  own address with its prefix length. Save the routing table and copy out the
+  address of the default gateway, the machine every packet leaves through when
+  it is not for your own network. Save the list of sockets that are listening
+  on this host, and notice that nothing is waiting for ssh, because Pridwen
+  ships with it off. Last, save the resolver status and find the DNS server
+  that turns names into addresses for you.
+steps:
+  - Save the one-line-per-interface address listing in `~/pridwen/answers/ip-addr.txt` and find your address and prefix length.
+  - Save the routing table in `~/pridwen/answers/ip-route.txt`, then write only the default gateway's address in `~/pridwen/answers/gateway.txt`.
+  - Save the listening TCP and UDP sockets, numerically, in `~/pridwen/answers/ss-listen.txt`.
+  - Save the resolver status in `~/pridwen/answers/resolvectl.txt` and find which DNS server answers you.
+hints:
+  - "`ip -br addr` and `ip route` are the two views; the routing table has a line starting `default via`."
+  - "`ss -tuln` lists listening sockets numerically; `-p` would add the owning process for your own sockets."
+  - "`resolvectl status` shows the DNS servers per link; the `Current DNS Server` line is the one in use."
+checks:
+  - id: ip-addr
+    type: path_contains
+    path: "{home}/pridwen/answers/ip-addr.txt"
+    regex: '\d+\.\d+\.\d+\.\d+/\d+'
+    fail: "`ip-addr.txt` should contain an IPv4 address with its prefix length, like `192.168.1.42/24`."
+  - id: ip-route
+    type: path_contains
+    path: "{home}/pridwen/answers/ip-route.txt"
+    regex: '^default via'
+    fail: "`ip-route.txt` should contain the routing table, with a line starting `default via`. If there is none, this machine has no route out."
+  - id: gateway
+    type: path_contains
+    path: "{home}/pridwen/answers/gateway.txt"
+    regex: '^\d+\.\d+\.\d+\.\d+\s*$'
+    fail: "`gateway.txt` should hold only the gateway's IPv4 address on its own line."
+  - id: ss-listen
+    type: path_contains
+    path: "{home}/pridwen/answers/ss-listen.txt"
+    regex: '^(tcp|udp)\s+(LISTEN|UNCONN)'
+    fail: "`ss-listen.txt` should be the numeric listing from `ss`, with `tcp`/`udp` and `LISTEN`/`UNCONN` columns."
+  - id: resolvectl
+    type: path_contains
+    path: "{home}/pridwen/answers/resolvectl.txt"
+    regex: 'DNS Server'
+    fail: "`resolvectl.txt` should be the output of `resolvectl status`, which names the DNS servers for each link."
+cleanup: |
+  rm -f ~/pridwen/answers/ip-addr.txt ~/pridwen/answers/ip-route.txt ~/pridwen/answers/gateway.txt
+  rm -f ~/pridwen/answers/ss-listen.txt ~/pridwen/answers/resolvectl.txt

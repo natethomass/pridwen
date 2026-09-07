@@ -1,0 +1,54 @@
+id: core-14-selinux
+node: selinux
+title: Put the label back
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  Sooner or later a guide on the internet will tell you to fix a permission
+  problem by turning SELinux off. This mission is the reason you will not.
+  Every file on Pridwen carries a label, a program may only touch the labels
+  its policy allows, and most "SELinux is blocking me" problems are a file
+  wearing the wrong label, which takes one command to fix.
+
+  Confirm the mode the system is running in and write it down. Then make a
+  small file under `~/pridwen/labels`, read its label, and change its type to
+  the one a web server's content would carry. Save the listing that shows the
+  wrong type, because that is what a denial looks like from the file's side.
+  Ask the policy to put the right label back and keep what it reported. Read
+  the label once more and think about why a web server would still be refused
+  a file inside your home, even with the label it wanted.
+steps:
+  - Confirm the mode SELinux is running in and write it in `~/pridwen/answers/getenforce.txt`.
+  - Create `~/pridwen/labels/web.html` with a line of text and read its label.
+  - Change its type to `httpd_sys_content_t` on purpose, and save the labelled listing showing the wrong type in `~/pridwen/answers/wrong-label.txt`.
+  - Restore the correct label from policy, verbosely, and save what the tool reported in `~/pridwen/answers/restorecon.txt`.
+  - Read the label once more and confirm it is back to what your home directory expects.
+hints:
+  - "`getenforce` prints the mode; `ls -Z file` prints the label, and the third colon-separated part is the type."
+  - "`chcon -t httpd_sys_content_t ~/pridwen/labels/web.html` changes the type by hand; `ls -Z` shows the result."
+  - "`restorecon -v ~/pridwen/labels/web.html` asks the policy what the label should be and prints a `Relabeled` line when it changed it."
+checks:
+  - id: enforcing
+    type: selinux
+    mode: enforcing
+    fail: "getenforce says {actual}; Pridwen runs enforcing, and this mission expects it."
+  - id: wrong-label
+    type: path_contains
+    path: "{home}/pridwen/answers/wrong-label.txt"
+    regex: 'httpd_sys_content_t'
+    fail: "`wrong-label.txt` should be an `ls -Z` listing showing `httpd_sys_content_t` on the file, the state before you fixed it."
+  - id: restored
+    type: cmd_output
+    cmd: ["ls", "-Z", "{home}/pridwen/labels/web.html"]
+    regex: 'user_home_t'
+    fail: "The file is labelled {actual}; policy says a file under your home should be `user_home_t`."
+  - id: restorecon-log
+    type: path_contains
+    path: "{home}/pridwen/answers/restorecon.txt"
+    regex: 'Relabeled'
+    fail: "`restorecon.txt` should hold what `restorecon -v` reported; it prints a `Relabeled` line only when the label actually changed."
+cleanup: |
+  rm -rf ~/pridwen/labels
+  rm -f ~/pridwen/answers/getenforce.txt ~/pridwen/answers/wrong-label.txt ~/pridwen/answers/restorecon.txt

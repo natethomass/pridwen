@@ -1,0 +1,53 @@
+id: core-01-terminal
+node: terminal
+title: Find your footing
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  Pridwen is installed, you are logged in, and the Coach is watching the shell
+  for the first time. Before anything else you need a place to keep your work,
+  and proof that you know where the shell puts you when Ptyxis opens.
+
+  Everything the Academy asks you to build lives under `~/pridwen`. Create it
+  now, with an `answers` directory inside for the small facts each mission asks
+  you to write down. Then record three things about this session: the absolute
+  path of your home directory, your login name as the shell reports it, and the
+  exit status the shell gives when you ask it to run a program that does not
+  exist. That last number is the one you will meet most often in your first
+  week, so it is worth knowing by heart.
+steps:
+  - Open Ptyxis and work out where you are and who you are.
+  - Create `~/pridwen` and `~/pridwen/answers`.
+  - Save the absolute path of your home directory in `~/pridwen/answers/pwd.txt`.
+  - Save your login name in `~/pridwen/answers/whoami.txt`.
+  - Run a command that does not exist, then save the exit status it produced in `~/pridwen/answers/exit-code.txt`.
+hints:
+  - "`pwd` prints where you are, `whoami` prints who you are, and `>` sends a command's output into a file."
+  - "`mkdir -p ~/pridwen/answers` makes both directories in one go."
+  - "Right after a command fails, `echo $?` prints its exit status; a name the shell cannot find gives 127."
+checks:
+  - id: workspace
+    type: path_type
+    path: "{home}/pridwen/answers"
+    kind: dir
+    fail: "`~/pridwen/answers` is {actual}; it should be a directory."
+  - id: pwd
+    type: path_contains
+    path: "{home}/pridwen/answers/pwd.txt"
+    regex: '^{home}\s*$'
+    fail: "`pwd.txt` should hold the absolute path of your home directory, the line `pwd` prints from there."
+  - id: whoami
+    type: path_contains
+    path: "{home}/pridwen/answers/whoami.txt"
+    regex: '^{user}\s*$'
+    fail: "`whoami.txt` should hold your login name on its own line."
+  - id: exit-code
+    type: path_contains
+    path: "{home}/pridwen/answers/exit-code.txt"
+    regex: '^127\s*$'
+    fail: "`exit-code.txt` should hold 127, the status bash gives when it cannot find a command."
+cleanup: |
+  rm -f ~/pridwen/answers/pwd.txt ~/pridwen/answers/whoami.txt ~/pridwen/answers/exit-code.txt
+  rmdir --ignore-fail-on-non-empty ~/pridwen/answers ~/pridwen 2>/dev/null || true

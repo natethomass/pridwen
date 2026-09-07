@@ -1,0 +1,82 @@
+# The Pridwen hardening baseline as data. Academy's Posture panel and
+# `pridwen posture` run each control's check read-only, as the learner, with
+# no sudo. A control with a `note` is one the current image does not ship yet
+# (it lands in M6); drift on it is expected and shown as such. `loosen` is the
+# documented way to relax the control on purpose, and every control points at
+# the lesson that explains why it is there.
+
+- id: selinux-enforcing
+  title: SELinux is enforcing
+  lesson: selinux-01
+  check: {type: selinux, mode: enforcing}
+  loosen: "`sudo setenforce 0` until reboot; read `pridwen learn selinux-03` first, because the fix is almost always a label, not the mode."
+
+- id: firewalld-drop
+  title: Firewall default zone is drop
+  lesson: fw-01
+  check: {type: firewalld_zone, zone: drop}
+  loosen: "`sudo firewall-cmd --set-default-zone=FedoraWorkstation` for Fedora's usual zone, or open exactly one thing with `--add-service` as `fw-02` shows."
+  note: "Today's image boots with Fedora's default zone. The drop zone becomes the build default in M6; drift here is expected until then."
+
+- id: sshd-off
+  title: sshd is not running
+  lesson: ssh-02
+  check: {type: unit_inactive, unit: sshd}
+  loosen: "`sudo systemctl enable --now sshd` when you mean to be reached; `ssh-03` hardens it before you open the firewall."
+
+- id: sudo-asks
+  title: sudo asks for a password
+  lesson: sudo-01
+  check: {type: cmd_exit, cmd: ["sudo", "-n", "true"], exit: 1}
+  loosen: "A `NOPASSWD` rule in `/etc/sudoers.d/` removes the prompt; `sudo-02` explains what you give up. There is no root password to fall back on."
+  note: "Passes only when nothing is cached: for a few minutes after any sudo, `sudo -n` succeeds and this shows drift. `sudo -k` clears it."
+
+- id: immutable-root
+  title: The system is an immutable image
+  lesson: boot-02
+  check: {type: path_exists, path: /run/ostree-booted}
+  loosen: "It cannot be loosened. Layer a package with `rpm-ostree install`, or use a Distrobox for anything mutable."
+
+- id: luks
+  title: The disk is encrypted with LUKS
+  lesson: store-03
+  check: {type: cmd_output, cmd: ["lsblk", "-o", "TYPE"], regex: 'crypt'}
+  loosen: "Only at install time, by choosing not to encrypt. There is no safe way to remove LUKS from a running system."
+
+- id: dmesg-restrict
+  title: Kernel log is restricted to root
+  lesson: hard-01
+  check: {type: sysctl, key: kernel.dmesg_restrict, value: "1"}
+  loosen: "`sudo sysctl -w kernel.dmesg_restrict=0` until reboot; `sudo dmesg` is the better habit."
+
+- id: kptr-restrict
+  title: Kernel pointers are hidden
+  lesson: hard-01
+  check: {type: cmd_output, cmd: ["sysctl", "-n", "kernel.kptr_restrict"], regex: '^[12]\s*$'}
+  loosen: "`sudo sysctl -w kernel.kptr_restrict=0` until reboot, only while debugging the kernel itself."
+
+- id: dns-over-tls
+  title: DNS goes over TLS
+  lesson: net-02
+  check: {type: cmd_output, cmd: ["resolvectl", "status"], regex: '\+DNSOverTLS|DNSOverTLS=(yes|opportunistic)|DNS over TLS: (yes|opportunistic)'}
+  loosen: "`DNSOverTLS=no` in a file under `/etc/systemd/resolved.conf.d/`, then `sudo systemctl restart systemd-resolved`."
+  note: "Not yet set in the image; M6 turns it on in opportunistic mode. Drift here is expected until then."
+
+- id: usbguard
+  title: USBGuard is watching new devices
+  lesson: hard-02
+  check: {type: unit_active, unit: usbguard}
+  loosen: "`sudo systemctl disable --now usbguard` if a device you need is blocked; `sudo usbguard allow-device` is the narrower fix."
+  note: "usbguard is not in today's image; M6 adds it in learning mode. Drift here is expected until then."
+
+- id: flathub-only
+  title: Flatpaks come from Flathub only
+  lesson: pkg-02
+  check: {type: cmd_output, cmd: ["flatpak", "remotes"], regex: '\A(?![\s\S]*^fedora)[\s\S]*^flathub\b'}
+  loosen: "`flatpak remote-add --user` for a remote you trust, per user rather than system-wide, so the system list stays Flathub only."
+
+- id: auditd
+  title: auditd is recording
+  lesson: log-03
+  check: {type: unit_active, unit: auditd}
+  loosen: "`sudo systemctl disable --now auditd` is possible, but SELinux denials and sudo use then go unrecorded; keep it."

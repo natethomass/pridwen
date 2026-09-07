@@ -1,0 +1,60 @@
+id: core-18-scripting
+node: scripting
+title: Write the report script
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  Every few days you run the same four commands to see how the machine is
+  doing: the hostname, the date, the uptime, the free space on `/home`. That
+  is a script waiting to be written, and writing it is how a command line you
+  trust becomes a tool you can hand to someone else.
+
+  Put it in `~/pridwen/bin/sysreport.sh`. The first line names the interpreter.
+  The second turns on the three safety options that make bash stop at the
+  first error, refuse an unset variable, and notice a failure in the middle of
+  a pipeline; without them a script carries on past its own mistakes and
+  reports success. It should write its report to `~/pridwen/reports/latest.txt`,
+  creating the directory if it is missing, and it should be executable so you
+  can run it by path. Once it works, break it on purpose with a misspelt
+  command and watch it stop where a careless script would have kept going.
+steps:
+  - Write `~/pridwen/bin/sysreport.sh` in bash with a proper first line and the three safety options set before anything else.
+  - Make it write the hostname, the date, the uptime, and the disk usage of `/home` to `~/pridwen/reports/latest.txt`, creating the directory if needed.
+  - Make it executable and run it by path.
+  - Break it on purpose once with a misspelt command, run it, and watch it stop instead of carrying on. Then fix it.
+hints:
+  - "First line `#!/usr/bin/bash`, second line `set -euo pipefail`; `mkdir -p` never complains about an existing directory."
+  - "Group the commands: `{ hostname; date; uptime; df -h /home; } > ~/pridwen/reports/latest.txt`, or redirect each one with `>>` after emptying the file."
+  - "`chmod +x ~/pridwen/bin/sysreport.sh`, then `~/pridwen/bin/sysreport.sh`; exit 126 means the execute bit is missing."
+checks:
+  - id: shebang
+    type: path_contains
+    path: "{home}/pridwen/bin/sysreport.sh"
+    regex: '\A#!\s*/(usr/)?bin/(env\s+)?bash'
+    fail: "The first line of `sysreport.sh` should be a shebang naming bash: `#!/usr/bin/bash`."
+  - id: safety
+    type: path_contains
+    path: "{home}/pridwen/bin/sysreport.sh"
+    regex: '^\s*set\s+-[euo]{3}\s+pipefail'
+    fail: "The script should turn on `set -euo pipefail` near the top: stop on errors, on unset variables, and on failures inside pipelines."
+  - id: executable
+    type: cmd_exit
+    cmd: ["test", "-x", "{home}/pridwen/bin/sysreport.sh"]
+    exit: 0
+    fail: "`test -x` exited {actual}; the script is not executable yet, so `chmod +x` it."
+  - id: runs
+    type: cmd_exit
+    cmd: ["{home}/pridwen/bin/sysreport.sh"]
+    exit: 0
+    fail: "Running the script exited {actual}; with `set -e` any failing command ends it, so run it yourself and read the last line it printed."
+  - id: report
+    type: path_contains
+    path: "{home}/pridwen/reports/latest.txt"
+    regex: '{host}'
+    fail: "`reports/latest.txt` should contain this machine's hostname, which `hostname` prints."
+cleanup: |
+  rm -f ~/pridwen/bin/sysreport.sh
+  rm -rf ~/pridwen/reports
+  rmdir --ignore-fail-on-non-empty ~/pridwen/bin 2>/dev/null || true

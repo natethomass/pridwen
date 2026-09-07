@@ -1,0 +1,64 @@
+id: core-02-files
+node: files
+title: Sort the inbox
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  For a month you have been dropping files from a USB stick into one directory
+  and promising to sort them later. Later is now. Press Start and the Academy
+  fills `~/pridwen/inbox` with that month: a report, some notes, a few images,
+  and two log files nobody will ever read.
+
+  The job is to give each file a home. Documents go in a `docs` directory,
+  images in `images`, and the logs go away. Before the report moves anywhere,
+  make a safety copy of it, because the command line has no recycle bin and
+  this is the habit that saves you the day a pattern matches more than you
+  meant. When you are done, the top of the inbox should hold nothing but the
+  two directories.
+setup: |
+  rm -rf ~/pridwen/inbox
+  mkdir -p ~/pridwen/inbox
+  cd ~/pridwen/inbox
+  printf 'Quarterly report, draft 3.\nNumbers are in the attached sheet.\n' > report.txt
+  printf '# Notes from Monday\n\n- call the landlord\n- renew the domain\n' > notes.md
+  printf 'placeholder image data, not a real photo\n' > photo1.jpg
+  printf 'placeholder image data, not a real photo\n' > photo2.jpg
+  printf 'placeholder image data, not a real screenshot\n' > screenshot.png
+  printf '2026-08-30 10:00:01 INFO nothing happened\n' > old.log
+  printf '2026-08-31 10:00:01 INFO still nothing\n' > older.log
+steps:
+  - Look at what is in `~/pridwen/inbox` before you move anything.
+  - Make `docs` and `images` directories inside the inbox and move each file into the one that fits.
+  - Keep a safety copy of `report.txt` in `docs`, named `report.bak`.
+  - Remove the two `.log` files.
+  - Confirm the top of the inbox holds only the two directories.
+hints:
+  - "`ls -l` shows what is there; `file *` guesses what each one is from its content rather than its name."
+  - "`mv *.jpg *.png images/` moves several files at once; check the pattern with `ls *.jpg *.png` first."
+  - "`cp docs/report.txt docs/report.bak` copies; `rm -i *.log` asks before each removal."
+checks:
+  - id: image-moved
+    type: path_exists
+    path: "{home}/pridwen/inbox/images/photo1.jpg"
+    fail: "`images/photo1.jpg` is not there; the images belong in `~/pridwen/inbox/images`."
+  - id: image-not-copied
+    type: path_missing
+    path: "{home}/pridwen/inbox/photo1.jpg"
+    fail: "`photo1.jpg` is still at the top of the inbox; move it rather than copying it."
+  - id: report-moved
+    type: path_exists
+    path: "{home}/pridwen/inbox/docs/report.txt"
+    fail: "`docs/report.txt` is not there; the report is a document."
+  - id: report-backup
+    type: path_contains
+    path: "{home}/pridwen/inbox/docs/report.bak"
+    regex: 'Quarterly report'
+    fail: "`docs/report.bak` should be a copy of the report, with the same words inside."
+  - id: logs-gone
+    type: path_missing
+    path: "{home}/pridwen/inbox/old.log"
+    fail: "`old.log` is still there; the log files are the ones to remove."
+cleanup: |
+  rm -rf ~/pridwen/inbox

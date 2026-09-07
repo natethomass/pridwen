@@ -1,0 +1,51 @@
+id: core-10-storage
+node: storage
+title: Read the stack
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  Every file on this machine sits on a stack you have never looked at: a disk,
+  a partition, an encryption layer that unlocked when you typed your passphrase
+  at boot, and a btrfs filesystem inside it whose subvolumes become `/`,
+  `/home` and `/var`. When a disk fills up or a drive fails, the stack is what
+  you will be reading, so read it now while nothing is wrong.
+
+  Save the block device tree with filesystem details and find the encryption
+  layer. Work out which device and filesystem type back `/`, and save the mount
+  options so you can see the subvolume named there. Then check the free space
+  of `/home` and compare it with `/`: they report the same number, and the
+  reason is a small lesson in how btrfs shares one pool between subvolumes.
+steps:
+  - Save the block device tree with filesystem details in `~/pridwen/answers/lsblk.txt` and find the encryption layer.
+  - Find the device and filesystem type behind `/` and save that line in `~/pridwen/answers/root-fs.txt`.
+  - Save the mount options of `/` in `~/pridwen/answers/root-options.txt` and find the subvolume named there.
+  - Save the free space of `/home`, human-readable, in `~/pridwen/answers/df-home.txt` and compare it with `/`.
+hints:
+  - "`lsblk -f` adds the filesystem type and UUID to each layer; the `crypt` line is LUKS."
+  - "`findmnt -no SOURCE,FSTYPE /` and `findmnt -no OPTIONS /` print one thing each, with no table around it."
+  - "`df -h /home` and `df -h /` report the same free space because both are subvolumes of one btrfs filesystem."
+checks:
+  - id: lsblk
+    type: path_contains
+    path: "{home}/pridwen/answers/lsblk.txt"
+    regex: 'crypt|LUKS'
+    fail: "`lsblk.txt` shows no `crypt` layer. Pridwen installs on LUKS; if this host was installed without encryption, that is worth knowing."
+  - id: root-fs
+    type: path_contains
+    path: "{home}/pridwen/answers/root-fs.txt"
+    regex: 'btrfs'
+    fail: "`root-fs.txt` should name the root filesystem type, which is btrfs on Pridwen."
+  - id: root-options
+    type: path_contains
+    path: "{home}/pridwen/answers/root-options.txt"
+    regex: 'subvol='
+    fail: "`root-options.txt` should contain the mount options of `/`, including `subvol=`."
+  - id: df-home
+    type: path_contains
+    path: "{home}/pridwen/answers/df-home.txt"
+    regex: '^Filesystem\s+Size'
+    fail: "`df-home.txt` should be the human-readable `df` table for `/home`, header included."
+cleanup: |
+  rm -f ~/pridwen/answers/lsblk.txt ~/pridwen/answers/root-fs.txt ~/pridwen/answers/root-options.txt ~/pridwen/answers/df-home.txt

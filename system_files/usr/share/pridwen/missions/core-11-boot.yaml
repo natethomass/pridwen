@@ -1,0 +1,53 @@
+id: core-11-boot
+node: boot
+title: Know your deployment
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  The next time Pridwen updates, the machine will reboot into a new image and
+  keep the old one behind it, ready to roll back to if the new one misbehaves.
+  That safety net only helps if you know how to read it before you need it,
+  and the reading is all unprivileged.
+
+  Save the kernel arguments this deployment boots with and find the one that
+  names the root device; those arguments are how the kernel learns where the
+  system lives, and `rpm-ostree kargs` is how you would change them. Save the
+  bootc view of the host and read which image is booted and whether a rollback
+  deployment exists yet. Then look at the boot itself: how long each phase
+  took, which boots the journal still remembers, and whether anything failed
+  on the way to the desktop this time. A quiet error list is the baseline you
+  will compare against after the first update.
+steps:
+  - Save the kernel arguments this deployment boots with in `~/pridwen/answers/kargs.txt` and find the one naming the root device.
+  - Save the bootc view of the host in `~/pridwen/answers/bootc-status.txt` and read which image is booted and whether a rollback exists.
+  - Save the boot time breakdown in `~/pridwen/answers/boot-time.txt` and name the slowest phase.
+  - Save the list of boots the journal remembers in `~/pridwen/answers/boots.txt`, then read this boot's errors, if any.
+hints:
+  - "`rpm-ostree kargs` prints the arguments; `cat /proc/cmdline` is the kernel's own copy of them."
+  - "`bootc status` reads the deployments; if it insists on root, this is one of the rare reads where `sudo` is fair."
+  - "`systemd-analyze` for the phases, `journalctl --list-boots` for the boots, `journalctl -b -p err` for this boot's errors. Members of wheel may read the system journal."
+checks:
+  - id: kargs
+    type: path_contains
+    path: "{home}/pridwen/answers/kargs.txt"
+    regex: 'root='
+    fail: "`kargs.txt` should hold the kernel arguments, which include `root=`."
+  - id: bootc-status
+    type: path_contains
+    path: "{home}/pridwen/answers/bootc-status.txt"
+    regex: 'pridwen'
+    fail: "`bootc-status.txt` should show the booted image, `ghcr.io/natethomass/pridwen`."
+  - id: boot-time
+    type: path_contains
+    path: "{home}/pridwen/answers/boot-time.txt"
+    regex: 'Startup finished'
+    fail: "`boot-time.txt` should be `systemd-analyze` output, which begins with `Startup finished`."
+  - id: boots
+    type: path_contains
+    path: "{home}/pridwen/answers/boots.txt"
+    regex: '[0-9a-f]{32}'
+    fail: "`boots.txt` should be the `--list-boots` table; each boot has a 32-character id."
+cleanup: |
+  rm -f ~/pridwen/answers/kargs.txt ~/pridwen/answers/bootc-status.txt ~/pridwen/answers/boot-time.txt ~/pridwen/answers/boots.txt

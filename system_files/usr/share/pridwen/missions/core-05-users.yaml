@@ -1,0 +1,53 @@
+id: core-05-users
+node: users
+title: Read the account book
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  Your machine has more accounts than people. The login screen runs as one of
+  them, the Coach's socket belongs to you, and a dozen services each have a
+  name and a number of their own so that a fault in one cannot reach into
+  another. None of this needs root to read, and reading it is how you learn
+  what the numbers mean before you ever create an account yourself.
+
+  Start with `id` and your own line in the account book. Then look up the
+  `gdm` account, the one that draws the login screen, and record its uid. Find
+  out what shell root gets, and count the fields in a passwd line so the format
+  stops looking like noise. Last, confirm you are in the `wheel` group. On
+  Pridwen that membership is what turns your password into `sudo`, and the
+  sudo mission assumes it.
+steps:
+  - Run `id` and read your uid, your primary group, and the groups you belong to.
+  - Find the uid of the `gdm` account and write it in `~/pridwen/answers/gdm-uid.txt`.
+  - Find root's login shell and write it in `~/pridwen/answers/root-shell.txt`.
+  - Count the fields in one line of `/etc/passwd` and write the number in `~/pridwen/answers/passwd-fields.txt`.
+  - Confirm you are in the `wheel` group.
+hints:
+  - "`getent passwd gdm` prints the account's line; the third colon-separated field is the uid."
+  - "Fields in `/etc/passwd` are separated by colons and the last one is the login shell; `getent passwd root` shows root's."
+  - "`id -nG` lists your groups by name. If `wheel` is missing, the welcome wizard did not make you an administrator, and another administrator will have to add you before the sudo mission."
+checks:
+  - id: gdm-uid
+    type: path_contains
+    path: "{home}/pridwen/answers/gdm-uid.txt"
+    regex: '^42\s*$'
+    fail: "`gdm-uid.txt` should hold gdm's uid, the third colon-separated field of its passwd line."
+  - id: root-shell
+    type: path_contains
+    path: "{home}/pridwen/answers/root-shell.txt"
+    regex: '^/(usr/)?bin/bash\s*$'
+    fail: "`root-shell.txt` should hold root's login shell, the last field of its passwd line."
+  - id: passwd-fields
+    type: path_contains
+    path: "{home}/pridwen/answers/passwd-fields.txt"
+    regex: '^7\s*$'
+    fail: "`passwd-fields.txt` should hold the number of colon-separated fields in a passwd line; count the colons and add one."
+  - id: wheel
+    type: group_member
+    user: "{user}"
+    group: wheel
+    fail: "Your groups are: {actual}. `wheel` is not among them, so sudo will refuse you; the first account the wizard creates is normally an administrator."
+cleanup: |
+  rm -f ~/pridwen/answers/gdm-uid.txt ~/pridwen/answers/root-shell.txt ~/pridwen/answers/passwd-fields.txt

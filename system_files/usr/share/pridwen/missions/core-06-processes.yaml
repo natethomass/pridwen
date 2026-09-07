@@ -1,0 +1,54 @@
+id: core-06-processes
+node: processes
+title: Catch a runaway
+track: core
+required: true
+minutes: 10
+target: host
+brief: |
+  A terminal tab you closed an hour ago is still using the CPU, and nothing on
+  the screen tells you what it is. That is the everyday shape of a process
+  problem: something is running, you did not start it on purpose this time,
+  and you need to find it and end it without rebooting.
+
+  Make one on purpose so you can practise. Start a `sleep` that would run for
+  over an hour, put it in the background so you keep your prompt, and then find
+  it the way you would find a stranger: by name, without guessing. Note its
+  process id. While you are looking, find out what process 1 is called, since
+  everything else on the machine descends from it, and learn the number of the
+  polite signal, the one that asks a program to finish rather than pulling the
+  plug. Then use it, and confirm the sleep is gone.
+steps:
+  - Start `sleep 4242` in the background so the prompt comes back.
+  - Find its process id without guessing and write it in `~/pridwen/answers/sleep-pid.txt`.
+  - Find the name of the process with pid 1 and write it in `~/pridwen/answers/pid1.txt`.
+  - Write the number of the TERM signal in `~/pridwen/answers/signal-term.txt`.
+  - End the sleep politely, then confirm it is gone.
+hints:
+  - "A trailing `&` backgrounds a command; `jobs`, `pgrep -f 'sleep 4242'` and `ps aux | grep sleep` all find it afterwards."
+  - "`ps -p 1 -o comm=` prints the name of pid 1; `kill -l TERM` prints a signal's number."
+  - "`kill <pid>` sends TERM by default; once it is gone, `pgrep -f 'sleep 4242'` prints nothing and exits 1."
+checks:
+  - id: sleep-pid
+    type: path_contains
+    path: "{home}/pridwen/answers/sleep-pid.txt"
+    regex: '^\d+\s*$'
+    fail: "`sleep-pid.txt` should hold the process id, a number on its own line."
+  - id: pid1
+    type: path_contains
+    path: "{home}/pridwen/answers/pid1.txt"
+    regex: 'systemd'
+    fail: "`pid1.txt` should hold the name of pid 1; on Pridwen that is systemd."
+  - id: signal-term
+    type: path_contains
+    path: "{home}/pridwen/answers/signal-term.txt"
+    regex: '^15\s*$'
+    fail: "`signal-term.txt` should hold 15, the number of SIGTERM."
+  - id: gone
+    type: cmd_exit
+    cmd: ["pgrep", "-f", "sleep 4242"]
+    exit: 1
+    fail: "`pgrep -f 'sleep 4242'` exited {actual}; 1 would mean no such process. It is still running."
+cleanup: |
+  pkill -f 'sleep 4242' 2>/dev/null || true
+  rm -f ~/pridwen/answers/sleep-pid.txt ~/pridwen/answers/pid1.txt ~/pridwen/answers/signal-term.txt

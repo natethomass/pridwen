@@ -1,0 +1,55 @@
+id: core-17-containers
+node: containers
+title: Run something disposable
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  You want to try a tool without letting it anywhere near your system. On
+  Pridwen the answer is a container: a second, smaller Linux that runs as your
+  user, sees only what you hand it, and can be thrown away when you are done.
+  Podman runs them without a daemon and without root, which is why it is here
+  instead of Docker.
+
+  Pull Fedora's minimal image and confirm it arrived. Run it once, in a
+  container with a name you chose, asking it to print its own `/etc/os-release`
+  so you can see it is a different Fedora from the one you are sitting on. Do
+  not clean it up yet: a stopped container stays listed, and reading that
+  listing is how you will find the one that is hogging space next month. Then
+  look at the map that makes rootless work, the one that says what root inside
+  the container becomes out here. It is not you, and it is not root.
+steps:
+  - Pull `registry.fedoraproject.org/fedora-minimal` and confirm it is in your image list.
+  - Run it once as a container named `pridwen-core` that prints its `/etc/os-release`, and save that output in `~/pridwen/answers/container-os.txt`.
+  - Leave the stopped container in place and find it in the full container listing.
+  - Save the uid map of your rootless namespace in `~/pridwen/answers/uid-map.txt` and work out what root inside the container maps to.
+hints:
+  - "`podman pull registry.fedoraproject.org/fedora-minimal:latest`, then `podman images`."
+  - "`podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release > ~/pridwen/answers/container-os.txt`; without `--rm` the container stays listed in `podman ps -a`."
+  - "`podman unshare cat /proc/self/uid_map` shows the map; its second line starts with 1 and points at your subordinate uid range."
+checks:
+  - id: image
+    type: cmd_output
+    cmd: ["podman", "images"]
+    regex: 'registry\.fedoraproject\.org/fedora-minimal'
+    fail: "`podman images` does not list fedora-minimal; the pull may have failed or used another registry."
+  - id: container
+    type: cmd_output
+    cmd: ["podman", "ps", "-a"]
+    regex: 'fedora-minimal.*\bpridwen-core\b'
+    fail: "`podman ps -a` shows no container named `pridwen-core` from fedora-minimal; `--rm` would have removed it, and a different name does not count."
+  - id: os-release
+    type: path_contains
+    path: "{home}/pridwen/answers/container-os.txt"
+    regex: '^ID="?fedora"?\s*$'
+    fail: "`container-os.txt` should be the container's `/etc/os-release`, with an `ID=fedora` line."
+  - id: uid-map
+    type: path_contains
+    path: "{home}/pridwen/answers/uid-map.txt"
+    regex: '^\s*1\s+\d{4,}\s+\d+'
+    fail: "`uid-map.txt` should hold the uid map from inside `podman unshare`; its second line maps container uid 1 onto your subordinate range."
+cleanup: |
+  podman rm -f pridwen-core >/dev/null 2>&1 || true
+  podman rmi registry.fedoraproject.org/fedora-minimal >/dev/null 2>&1 || true
+  rm -f ~/pridwen/answers/container-os.txt ~/pridwen/answers/uid-map.txt

@@ -1,0 +1,64 @@
+id: core-03-find
+node: files
+title: Find what is eating the disk
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  Your home directory is bigger than it should be and you have a feeling it is
+  one file, not a thousand. Press Start and the Academy builds a small archive
+  under `~/pridwen/archive`: notes, a photo directory, and a cache with a
+  handful of binary blobs, one of them much larger than the rest.
+
+  This mission is about asking the filesystem questions instead of opening
+  every directory by hand. Find the single largest file and write down its full
+  path. Count the markdown notes, and only the markdown, since a plain text
+  readme sits among them to keep you honest. Then pack the whole archive into a
+  compressed tarball at `~/pridwen/archive.tar.gz` and list what went in
+  without extracting it. Archives are how files travel between machines, and
+  looking inside one before trusting it is a habit worth keeping.
+setup: |
+  rm -rf ~/pridwen/archive ~/pridwen/archive.tar.gz
+  mkdir -p ~/pridwen/archive/notes ~/pridwen/archive/cache ~/pridwen/archive/photos/2025 ~/pridwen/answers
+  cd ~/pridwen/archive
+  for d in 1 2 3 4; do printf '# Day %s\n\nA short note.\n' "$d" > "notes/day-$d.md"; done
+  printf 'readme, not markdown\n' > notes/README.txt
+  for i in 1 2 3 4 5 6; do head -c 4096 /dev/zero > "cache/blob-$i.bin"; done
+  head -c 3145728 /dev/zero > cache/blob-7.bin
+  head -c 2048 /dev/zero > photos/2025/beach.jpg
+  head -c 2048 /dev/zero > photos/2025/hike.jpg
+  touch -d '2 years ago' photos/2025/beach.jpg
+steps:
+  - Explore `~/pridwen/archive` and get a feel for its shape.
+  - Find the single largest file under it and write its full path in `~/pridwen/answers/biggest.txt`.
+  - Count the markdown files under the archive and write the number in `~/pridwen/answers/md-count.txt`.
+  - Pack the whole `archive` directory into `~/pridwen/archive.tar.gz`.
+  - List the contents of the tarball without extracting it, to be sure the notes went in.
+hints:
+  - "`du -a ~/pridwen/archive | sort -n | tail` ranks everything by size; `find ~/pridwen/archive -size +1M` asks the question directly."
+  - "`find ~/pridwen/archive -name '*.md' | wc -l` counts matches, one per line."
+  - "`tar -czf ~/pridwen/archive.tar.gz -C ~/pridwen archive` packs it; `tar -tzf ~/pridwen/archive.tar.gz` lists it."
+checks:
+  - id: biggest
+    type: path_contains
+    path: "{home}/pridwen/answers/biggest.txt"
+    regex: 'archive/cache/blob-7\.bin'
+    fail: "`biggest.txt` should name the largest file by its path; look again at the `cache` directory."
+  - id: md-count
+    type: path_contains
+    path: "{home}/pridwen/answers/md-count.txt"
+    regex: '^\s*4\s*$'
+    fail: "`md-count.txt` should hold the number of `.md` files, and `README.txt` is not one of them."
+  - id: tarball
+    type: path_exists
+    path: "{home}/pridwen/archive.tar.gz"
+    fail: "`~/pridwen/archive.tar.gz` does not exist yet."
+  - id: tarball-contents
+    type: cmd_output
+    cmd: ["tar", "-tzf", "{home}/pridwen/archive.tar.gz"]
+    regex: 'notes/day-1\.md'
+    fail: "The tarball does not list `notes/day-1.md`; pack the `archive` directory itself, not just part of it."
+cleanup: |
+  rm -rf ~/pridwen/archive ~/pridwen/archive.tar.gz
+  rm -f ~/pridwen/answers/biggest.txt ~/pridwen/answers/md-count.txt

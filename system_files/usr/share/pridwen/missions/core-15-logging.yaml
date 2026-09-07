@@ -1,0 +1,54 @@
+id: core-15-logging
+node: logging
+title: Narrow the journal
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  Something went wrong at 9:14 this morning and you want to know what. The
+  journal has every line from every service since the machine was installed,
+  which is the problem: the answer is in there with a hundred thousand other
+  lines. The skill is not reading the journal, it is narrowing it until only
+  the answer is left.
+
+  Practise on lines you control. Write one entry yourself, tagged so you can
+  find it again, then find it with the tag and a time window. Pull the last
+  few sudo records by matching on a field the journal indexes, which is faster
+  and more exact than searching text. Read this boot's lines from the `gdm`
+  unit, which is the system journal, open to you because you are in wheel.
+  Then look at this boot at warning and above and see how much of what is
+  left you already understand.
+steps:
+  - Write one line into the journal yourself, tagged `pridwen-core`, saying that the logging mission started.
+  - Find that line again using the tag and a time window, and save the result in `~/pridwen/answers/journal-tag.txt`.
+  - Find the last few sudo records by matching the `_COMM` field and save them in `~/pridwen/answers/journal-sudo.txt`.
+  - Save this boot's messages from the `gdm` unit in `~/pridwen/answers/journal-gdm.txt`.
+  - Read this boot at priority warning and above, and count how much of it you can already explain.
+hints:
+  - "`logger -t pridwen-core 'logging mission started'` writes the line; `journalctl -t pridwen-core --since -1h` reads it back."
+  - "`journalctl _COMM=sudo -n 5` matches on an indexed field; `journalctl -u gdm -b` combines a unit with this boot."
+  - "`journalctl -b -p warning -n 50` stacks a boot filter, a priority filter, and a line limit."
+checks:
+  - id: logged
+    type: journal_has
+    regex: 'logging mission'
+    since: "-24h"
+    fail: "No line matching `logging mission` in your user journal today; `logger -t pridwen-core 'logging mission started'` writes one."
+  - id: journal-tag
+    type: path_contains
+    path: "{home}/pridwen/answers/journal-tag.txt"
+    regex: 'pridwen-core.*logging mission'
+    fail: "`journal-tag.txt` should hold the journal line with the `pridwen-core` tag and your message."
+  - id: journal-sudo
+    type: path_contains
+    path: "{home}/pridwen/answers/journal-sudo.txt"
+    regex: 'COMMAND='
+    fail: "`journal-sudo.txt` should hold sudo's records, each with `COMMAND=`; run a `sudo true` first if the journal has none."
+  - id: journal-gdm
+    type: path_contains
+    path: "{home}/pridwen/answers/journal-gdm.txt"
+    regex: 'gdm'
+    fail: "`journal-gdm.txt` should hold this boot's lines from the gdm unit, from `journalctl -u gdm -b`. If it complained about permissions, you are not in wheel."
+cleanup: |
+  rm -f ~/pridwen/answers/journal-tag.txt ~/pridwen/answers/journal-sudo.txt ~/pridwen/answers/journal-gdm.txt

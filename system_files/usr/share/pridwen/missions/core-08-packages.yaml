@@ -1,0 +1,54 @@
+id: core-08-packages
+node: packages
+title: Know what you are running
+track: core
+required: true
+minutes: 15
+target: host
+brief: |
+  A friend asks what version of Linux you are on and whether you can install a
+  tool for them. On a traditional distribution you would answer with `dnf`.
+  On Pridwen the honest answer has three parts: the image the whole system
+  boots from, the Flatpaks layered on top for the desktop, and the containers
+  where anything mutable lives.
+
+  Read each layer for yourself. Save the deployment listing so you can see the
+  image name and its digest. Save the list of Flatpak remotes and confirm
+  Flathub is where apps come from. Install one app you will actually use:
+  Flatseal, which shows and edits the sandbox permissions of every other
+  Flatpak. Finally, answer a question the image can still take without `dnf`:
+  which RPM package put `podman` on this machine. The tools that read the
+  package database keep working on an image; only the ones that write are gone.
+steps:
+  - Save the deployment listing in `~/pridwen/answers/rpm-ostree-status.txt` and read the image name and digest.
+  - Save the list of Flatpak remotes in `~/pridwen/answers/flatpak-remotes.txt`.
+  - Install Flatseal (`com.github.tchx84.Flatseal`) from Flathub, open it, and look at the permissions of one app.
+  - Find which RPM package owns `/usr/bin/podman` and write its name in `~/pridwen/answers/podman-package.txt`.
+hints:
+  - "`rpm-ostree status` works without sudo; the booted deployment is the one marked with a dot."
+  - "`flatpak remotes` lists where apps come from; `flatpak install flathub com.github.tchx84.Flatseal` installs one."
+  - "`rpm -qf /usr/bin/podman` answers which package owns a file; `rpm -q` keeps working on an image even though `dnf` does not."
+checks:
+  - id: status
+    type: path_contains
+    path: "{home}/pridwen/answers/rpm-ostree-status.txt"
+    regex: 'ghcr\.io/natethomass/pridwen'
+    fail: "`rpm-ostree-status.txt` should show the image this host boots from, `ghcr.io/natethomass/pridwen`."
+  - id: remotes
+    type: path_contains
+    path: "{home}/pridwen/answers/flatpak-remotes.txt"
+    regex: 'flathub'
+    fail: "`flatpak-remotes.txt` should list the remotes, and `flathub` should be one of them."
+  - id: flatseal
+    type: cmd_output
+    cmd: ["flatpak", "list", "--columns=application"]
+    regex: '^com\.github\.tchx84\.Flatseal$'
+    fail: "Flatseal is not in `flatpak list`; the install may still be running, or it may have been declined."
+  - id: podman-package
+    type: path_contains
+    path: "{home}/pridwen/answers/podman-package.txt"
+    regex: '^podman-\d'
+    fail: "`podman-package.txt` should hold the package name `rpm -qf` prints, which starts with `podman-`."
+cleanup: |
+  flatpak uninstall -y --noninteractive com.github.tchx84.Flatseal >/dev/null 2>&1 || true
+  rm -f ~/pridwen/answers/rpm-ostree-status.txt ~/pridwen/answers/flatpak-remotes.txt ~/pridwen/answers/podman-package.txt
