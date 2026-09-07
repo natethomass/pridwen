@@ -12,7 +12,7 @@ for readable data or `chmod 755 script` for a runnable program.
 ```
 $ chmod +x deploy.sh
 $ ls -l deploy.sh
--rwxr-xr-x. 1 nate nate 500 Sep  4 09:30 deploy.sh
+-rwxr-xr-x. 1 {user} {user} 500 Sep  4 09:30 deploy.sh
 $ sudo chown root:root /usr/local/bin/tool
 ```
 

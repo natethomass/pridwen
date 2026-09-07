@@ -12,11 +12,11 @@ each time, and `sudo -k` clears the cache immediately.
 
 ```
 $ sudo -l
-User nate may run the following commands on pridwen:
+User {user} may run the following commands on pridwen:
     (ALL) ALL
 $ sudo systemctl restart chronyd
 $ journalctl _COMM=sudo -n 1
-... nate : TTY=pts/0 ; PWD=/home/nate ; USER=root ; COMMAND=/usr/bin/systemctl restart chronyd
+... {user} : TTY=pts/0 ; PWD=/home/{user} ; USER=root ; COMMAND=/usr/bin/systemctl restart chronyd
 ```
 
 That journal line is the reason Pridwen uses sudo rather than a root login. It

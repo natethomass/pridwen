@@ -13,7 +13,7 @@ until reboot.
 ```
 $ lsblk -f /dev/sdb1
 $ udisksctl mount -b /dev/sdb1
-Mounted /dev/sdb1 at /run/media/nate/USB
+Mounted /dev/sdb1 at /run/media/{user}/USB
 $ udisksctl unmount -b /dev/sdb1
 ```
 

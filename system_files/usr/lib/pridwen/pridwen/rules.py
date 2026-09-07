@@ -57,10 +57,9 @@ def probe(spec, groups, cwd=None, cache=None):
     spec = spec.strip()
     if spec.startswith("not "):
         return not probe(spec[4:], groups, cwd, cache)
-    try:
-        spec = spec.format(**groups)
-    except (KeyError, IndexError, ValueError):
-        return False
+    spec = fill(spec, groups)
+    if _PLACEHOLDER.search(spec):
+        return False                     # a group the regex did not capture
     name, _, arg = spec.partition(":")
     name = name.strip()
     arg = arg.strip()
@@ -163,11 +162,27 @@ class Rule:
         return groups
 
 
-def fill(text, groups):
+_PLACEHOLDER = re.compile(r"\{([A-Za-z_]\w*)\}")
+
+
+def learner():
+    """The real login name, home and host: every hint and lesson speaks to this user."""
+    import getpass
+    import socket
     try:
-        return text.format(**groups)
-    except (KeyError, IndexError, ValueError):
-        return text
+        user = getpass.getuser()
+    except (KeyError, OSError):
+        user = os.environ.get("USER", "you")
+    return {"user": user, "home": os.path.expanduser("~"), "host": socket.gethostname().split(".")[0]}
+
+
+def fill(text, groups=None):
+    """Replace {name} placeholders from the regex groups plus {user}/{home}/{host}.
+    Unknown names are left alone, so shell text like ${var} survives."""
+    values = learner()
+    if groups:
+        values.update(groups)
+    return _PLACEHOLDER.sub(lambda m: str(values.get(m.group(1), m.group(0))), text)
 
 
 class Library:

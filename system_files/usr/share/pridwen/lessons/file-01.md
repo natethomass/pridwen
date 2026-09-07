@@ -11,8 +11,8 @@ is a directory.
 
 ```
 $ ls -l
-drwxr-xr-x. 2 nate nate 4096 Sep  4 09:12 Documents
--rw-r--r--. 1 nate nate  220 Sep  1 08:00 notes.txt
+drwxr-xr-x. 2 {user} {user} 4096 Sep  4 09:12 Documents
+-rw-r--r--. 1 {user} {user}  220 Sep  1 08:00 notes.txt
 ```
 
 Useful flags stack: `-a` shows dot files, `-h` prints sizes as K and M, `-t`

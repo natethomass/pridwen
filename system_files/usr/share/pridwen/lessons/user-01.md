@@ -11,14 +11,14 @@ membership in it is what lets `sudo` work.
 
 ```
 $ id
-uid=1000(nate) gid=1000(nate) groups=1000(nate),10(wheel),18(dialout)
+uid=1000({user}) gid=1000({user}) groups=1000({user}),10(wheel),18(dialout)
 $ groups
-nate wheel dialout
+{user} wheel dialout
 ```
 
 `/etc/passwd` has one line per account: name, an `x` where the password used to
 sit, the uid, the gid, a comment field, the home directory, and the login
-shell. It is world-readable so that tools can turn uid 1000 into "nate". The
+shell. It is world-readable so that tools can turn uid 1000 into "{user}". The
 password hashes moved long ago to `/etc/shadow`, which only root can read.
 Reading accounts through `getent passwd` uses the same path programs do, so it
 keeps working when accounts come from a network directory later.

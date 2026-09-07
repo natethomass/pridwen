@@ -14,7 +14,7 @@ passwords.
 ```
 $ resolvectl status | grep -i "DNS over TLS"
 $ timedatectl | grep -i "NTP service"
-$ sudo faillock --user nate         # show failed attempts
+$ sudo faillock --user {user}         # show failed attempts
 ```
 
 If a fat-fingered password locks an account, `sudo faillock --user name --reset`

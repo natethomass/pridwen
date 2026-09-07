@@ -11,9 +11,9 @@ user@host` installs it into the server's `~/.ssh/authorized_keys`, after which
 the password prompt disappears because the server trusts your key.
 
 ```
-$ ssh-keygen -t ed25519 -C "nate@pridwen"
-$ ssh-copy-id nate@web-01
-$ ssh nate@web-01
+$ ssh-keygen -t ed25519 -C "{user}@pridwen"
+$ ssh-copy-id {user}@web-01
+$ ssh {user}@web-01
 [web-01]$ hostname
 web-01
 ```

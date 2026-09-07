@@ -12,9 +12,9 @@ others may do nothing.
 
 ```
 $ ls -l script.sh
--rwxr-x---. 1 nate devs 812 Sep  4 09:20 script.sh
+-rwxr-x---. 1 {user} devs 812 Sep  4 09:20 script.sh
 $ stat -c '%A %a %U:%G' script.sh
--rwxr-x--- 750 nate:devs
+-rwxr-x--- 750 {user}:devs
 ```
 
 The numeric form adds the bits: read is 4, write is 2, execute is 1. So `rwx` is

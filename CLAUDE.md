@@ -162,7 +162,7 @@ language and keyboard pages in the wizard; Guide connection page is informationa
 M5; VirtualBox guest additions; Anaconda's blue progress bar and buttons are GTK Adwaita
 literals, not themable from the product CSS. The "recording worth posting" is the owner's call.
 
-## M2 status (2026-09-04, in progress)
+## M2 status: VERIFIED (2026-09-07)
 
 Design: `docs/coach.md` (installed at `/usr/share/doc/pridwen/coach.md`). Read it before
 touching rules or the daemon. Slices:
@@ -184,6 +184,9 @@ touching rules or the daemon. Slices:
    1cfc4a0 (retry until sent, `pridwen quiet hours`, `pridwen dispatch test`, wizard Timezone
    page, automatic-timezone dconf). Version 0.3.0-m2. Re-test: `pridwen quiet hours off`,
    then one more `sudo true`; notification actions (Learn opens a terminal lesson).
+   Owner confirmed 2026-09-07: the ten-sudo notification arrives with its actions. M2 done
+   (the week-long beginner soak is ongoing by nature). Content rule: never hard-code a sample
+   username; use `{user}`/`{home}`/`{host}` (the agent had written "nate" into 12 files).
 
 Decisions: bash stays the default login shell (zsh hook shipped too); rules match the
 command with a leading sudo stripped (`not_sudo` distinguishes); output is never captured,

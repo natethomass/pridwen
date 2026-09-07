@@ -12,7 +12,7 @@ services that must still take passwords.
 
 ```
 $ ssh-keygen -t ed25519
-$ ssh-copy-id nate@web-01
+$ ssh-copy-id {user}@web-01
 $ sudo tee /etc/ssh/sshd_config.d/20-nopw.conf <<'EOF'
 PasswordAuthentication no
 EOF

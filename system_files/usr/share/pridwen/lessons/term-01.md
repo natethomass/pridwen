@@ -12,12 +12,12 @@ relative to where you are now, and `~` is shorthand for your home directory.
 
 ```
 $ pwd
-/home/nate
+/home/{user}
 $ ls
 Desktop  Documents  Downloads  Pictures
 $ cd Documents
 $ pwd
-/home/nate/Documents
+/home/{user}/Documents
 ```
 
 Tab completion is the habit that saves the most typing and the most typos: start

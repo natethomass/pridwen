@@ -11,9 +11,9 @@ as in `ps aux --sort=-%mem | head` for the biggest memory users.
 ```
 $ ps -o pid,user,%cpu,comm -u $USER | head -n 4
     PID USER     %CPU COMMAND
-   1820 nate      0.0 systemd
-   1955 nate      1.2 gnome-shell
-   4242 nate      0.0 bash
+   1820 {user}      0.0 systemd
+   1955 {user}      1.2 gnome-shell
+   4242 {user}      0.0 bash
 ```
 
 `top` is interactive: `M` sorts by memory, `P` by CPU, `k` sends a signal, and

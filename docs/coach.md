@@ -92,7 +92,9 @@ A file is a list of rules. Fields:
 
 `command` is a Python regex matched with `re.search` against the scrubbed
 command line. Named groups are available as `{name}` in `probe`, `hint`, and
-`why`. `{cmd}` is the first word (after `sudo`).
+`why`. `{cmd}` is the first word (after `sudo`). `{user}`, `{home}` and `{host}` are
+always available (the learner's login name, home directory and hostname) in rules,
+probes and lessons: content never hard-codes a sample user.
 
 ### Probes
 

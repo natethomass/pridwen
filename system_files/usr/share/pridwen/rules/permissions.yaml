@@ -108,7 +108,7 @@
     If users could give files away, disk quotas and setuid checks would be trivial to
     defeat. So the kernel restricts chown to CAP_CHOWN, which means root.
     Ways forward:
-      1. `sudo chown nate:nate file`     set owner and group in one go
+      1. `sudo chown {user}:{user} file`     set owner and group in one go
       2. `chgrp group file`              you may change the group to one you belong to
       3. `id`                            lists the groups you are in
   man: [chown(1), chgrp(1), capabilities(7)]

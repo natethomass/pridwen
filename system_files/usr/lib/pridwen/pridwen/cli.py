@@ -133,7 +133,7 @@ def render_lesson(lib, lesson_id):
             md = f.read()
     except OSError:
         return False
-    out(text.render(md))
+    out(text.render(fill(md)))   # {user}, {home}, {host} become the learner's own
     node = lib.lesson_node(lesson_id)
     if node:
         n = lib.node(node)
