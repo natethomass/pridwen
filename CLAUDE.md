@@ -318,6 +318,52 @@ Slices:
    was removed from its success message rather than shipped wrong. `Progress.record()` still
    writes to the one real store, so no data is wrong, only that one printed line was. Merging
    the host and Range catalogs into one is required before Academy gets a Range page.
+3. **First real VM verification** (2026-09-08, "Pridwen M1 fresh"): slice 2 above was written
+   without podman available on the Windows dev machine, so it shipped with four real bugs, all
+   found and fixed by driving actual podman on the VM rather than by re-reading the code:
+   - `5a4545f`: `podman create`'s argv had no explicit init command. Rocky's base image `CMD` is
+     bare `/bin/bash`, which reads no stdin under `podman create` and exits immediately
+     ("Exited (0)" right after start) — `--systemd=always` prepares systemd-friendly mounts but
+     does not replace the image's own `CMD`. Fixed by appending `/sbin/init` explicitly to
+     `podman.py`'s `_create_argv`.
+   - `af8723f`: the plain `rockylinux:9` tag has no systemd package at all (`rpm -q systemd` →
+     not installed), so `podman start` failed with `crun: executable file /sbin/init not
+     found`. Repinned `images.yaml`'s `rocky9-init` to Rocky's `9-ubi-init` tag (the
+     systemd-carrying variant, analogous to RHEL UBI's `-init` images), verified live
+     (`rpm -q systemd` → `systemd-252-67.el9_8.4.rocky.0.1.x86_64`) and pinned by the
+     manifest-list digest checked against the live quay.io registry API.
+   - `deff68a`: `9-ubi-init` ships shadow-utils (`useradd`, `chage`) but not the separate
+     `passwd` package (`passwd`, `chsh`, `gpasswd`), so the `rhcsa-01-users` seed script died at
+     `passwd -l auditor` with "command not found". Fixed by adding `dnf install -y passwd` to
+     `scenarios/rhcsa-01-users/seed/users-01.sh`, verified manually in a throwaway container
+     before pushing.
+   - `8c87f09`: **the significant one** — `ContainerExecutor.run()` in `range/targets.py`
+     prepended a `--` separator to the `podman exec` argv. This podman does not treat `--` as
+     an end-of-options marker there; it passes it straight to crun as the literal command to
+     run, so every check on every container-based scenario failed with `crun: executable file
+     `--` not found in $PATH`, regardless of check type. Fixed by dropping the `--` (`-u root`
+     before the container name is unambiguous without one), verified manually
+     (`podman exec -u root <name> id -u auditor` → `1000` cleanly) before pushing.
+
+   Also encountered and ruled out as non-bugs: one transient `podman start` timeout (container
+   stuck in `Created`; `time podman start` on retry completed in 0.269s — a one-off resource
+   blip, not systematic) and an `rpm-ostreed-automatic` update timer that grabbed the sysroot
+   lock just before a manual `bootc upgrade`, then genuinely stalled mid-pull (confirmed via
+   flat CPU time and unchanged `/proc/<pid>/io` `read_bytes` across repeated checks) — worked
+   around by a manual upgrade + reboot rather than an in-session `rpm-ostree cancel` (blocked by
+   the coding agent's sandbox as a system-state change).
+
+   End-to-end, confirmed on the real VM after landing `8c87f09`: `pridwen range start
+   rhcsa-01-users` creates and seeds the container; `pridwen range enter` drops into a root
+   shell where `id auditor` / `getent passwd auditor` show the account exactly as broken by
+   design (`uid=1000`, shell `/sbin/nologin`); `pridwen range check rhcsa-01-users` reports all
+   6 checks failing (correct — the account isn't fixed yet) with real diagnostic text pulled
+   from the target (e.g. `passwd -S auditor` → `LK 2026-09-08 0 99999 7 -1 (Password locked.)`),
+   not crun errors. The container-runner slice is verified working end-to-end against real
+   podman for the first time. Not chased further (would be a fifth fix cycle in one session):
+   the `home-owner` check's `{actual}` reads "missing" rather than the real owning name even
+   post-fix — likely a pre-existing quirk in that check's own formatting, not a crun error, so
+   deferred to a future slice rather than guessed at live.
 
 ## The mark
 
