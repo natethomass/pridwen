@@ -8,7 +8,21 @@
     command: '(Failed password|authentication failure|Invalid user)'
     exit: any
   hint: >-
-    A burst of these from one address is a guessing attempt; on a Range host that is normal traffic to study. `journalctl _COMM=sshd -g Failed --since -1h | wc -l` counts them.
+    You are searching for failed logins. A burst from one address is password guessing, normal traffic to study on a Range host; rank the sources with `sort | uniq -c | sort -rn` (`pridwen learn logan-02`).
+  why: |
+    You searched the logs for the text an SSH server or PAM writes when a login
+    fails. On your own Pridwen host that search is usually empty, because `sshd`
+    is off by default and nothing accepts remote logins; on a Range host under a
+    scenario it returns a stream of lines, most of them from one or two
+    addresses guessing passwords. Pridwen keeps SSH off on the desktop so the
+    only place you meet this traffic is a lab you own, and the skill to practise
+    there is counting rather than reading: rank the source addresses and the
+    rarest one, which failed twice and then may have succeeded, is the story.
+    Ways forward:
+      1. `journalctl _COMM=sshd -g Failed --since -1h | wc -l`                 how many failures in the last hour
+      2. `journalctl _COMM=sshd -g Failed --since today | grep -oE 'from [0-9.]+' | sort | uniq -c | sort -rn`   rank the sources
+      3. `journalctl _COMM=sshd -g Accepted --since today`                  did any of them get in
+      4. `pridwen learn logan-02`                                            counting and ranking, step by step
   man: [journalctl(1), sshd(8)]
   cooldown: 3600
   priority: 5

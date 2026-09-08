@@ -8,16 +8,19 @@
     command: '^(sudo\s+)?rm\s+(-[A-Za-z]+\s+)*(--no-preserve-root\s+)?/+\s*$'
     exit: any
   hint: >-
-    `rm` refuses to remove `/` unless you add `--no-preserve-root`, and nothing good is on the other side of that flag.
-    On Pridwen the image is read-only anyway, but `/var` and `/home` are not.
+    `rm` refuses to remove `/`, the root of the whole filesystem, unless you add `--no-preserve-root`, and nothing good is on the other side of that flag.
+    Name the one directory you meant, and use `rm -ri` while learning.
   why: |
-    GNU rm has a guard against the most famous mistake on Linux. The base image under
-    `/usr` is mounted read-only and would survive, but `/etc`, `/var` and your home would
-    not. If you meant to empty a directory, name that directory.
+    `/` is the top of the single tree that holds every file on the machine, so `rm -r /`
+    means "remove everything". GNU rm has a built-in guard against that command because it
+    is the most famous mistake on Linux, usually caused by a stray space or an empty
+    variable in a script. On Pridwen the system image under `/usr` is mounted read-only
+    and would survive, but `/etc`, `/var` and your home are ordinary writable directories
+    and would not. There is no recycle bin on the command line and no undo.
     Ways forward:
-      1. `rm -ri ./dir`            interactive, relative path, no leading slash
-      2. `ls` first, then `rm`      look before you remove
-      3. `trash` (Flatpak apps)     the desktop Trash is recoverable; rm is not
+      1. `rm -ri ./dir`                interactive, relative path, no leading slash
+      2. `ls` first, then `rm`         look at what is there before you remove it
+      3. `pridwen learn file-02`       copy, move and remove, and the habits that keep them safe
   man: [rm(1)]
   cooldown: 3600
   priority: 50
@@ -28,8 +31,19 @@
     command: '^rm\s+(-[A-Za-z]+\s+)*(~|\$HOME|/home/[a-z_][a-z0-9_-]*)/?\s*$'
     exit: any
   hint: >-
-    That targets your whole home directory, including your shell config, SSH keys and Pridwen progress.
-    Name the thing you want gone, and use `rm -ri` while learning.
+    That names your whole home directory, which holds your shell configuration, SSH keys and Pridwen progress, and `rm` cannot be undone.
+    Name the one thing you want gone, and use `rm -ri` while learning.
+  why: |
+    `~`, `$HOME` and `{home}` all mean your home directory, the one place on Pridwen that
+    is entirely yours. It holds more than your documents: `.bashrc`, `.ssh`, the Academy's
+    progress database under `.local/share/pridwen`, and every setting your desktop apps
+    keep. `rm` removes files immediately and permanently; the desktop Trash does not apply
+    to the command line. Removing a home directory is rarely what anyone means, so the
+    Coach stops to ask before the shell carries it out.
+    Ways forward:
+      1. `ls -la ~`                    see what is really in there
+      2. `rm -ri ~/one-thing`          remove the single item you meant, asking each time
+      3. `du -sh ~/* | sort -h`        find what is taking space, if that was the goal
   man: [rm(1)]
   cooldown: 3600
   priority: 50
@@ -40,14 +54,20 @@
     command: '^rm\s+(?!-)(?P<path>\S+)\s*$'
     probe: is_dir:{path}
   hint: >-
-    `rm` will not remove a directory on its own. `rmdir {path}` works if it is empty; `rm -r {path}` removes it and everything inside.
+    `{path}` is a directory, and `rm` on its own only removes files ("Is a directory").
+    `rmdir {path}` works if it is empty; `rm -r {path}` removes it and everything inside, with no undo.
   why: |
-    Removing a directory means removing every entry in it first, which is a different
-    kind of decision, so rm asks you to say so with `-r`. There is no undo.
+    A directory is a list of names, and removing it means removing every file and
+    subdirectory it contains first. That is a much bigger decision than removing one file,
+    so `rm` refuses unless you say `-r` (recursive) to confirm you mean all of it. There is
+    no recycle bin on the command line: once `rm -r` finishes, the contents are gone.
+    `rmdir` is the cautious tool, because it only succeeds on an empty directory and so
+    doubles as a check that nothing is still inside.
     Ways forward:
-      1. `rmdir {path}`             only succeeds when empty, which is a safe check
-      2. `ls -A {path}`             see what would go
-      3. `rm -ri {path}`            remove it, asking about each file
+      1. `ls -A {path}`                see what would go
+      2. `rmdir {path}`                only succeeds when empty, which is a safe check
+      3. `rm -ri {path}`               remove it, asking about each file
+      4. `rm -r {path}`                remove it and its contents without asking
   man: [rm(1), rmdir(1)]
   cooldown: 1800
   priority: 10
@@ -58,7 +78,19 @@
     command: '^mkdir\s+(?P<path>[^-\s]\S*)\s*$'
     probe: exists:{path}
   hint: >-
-    `{path}` already exists. `mkdir -p` treats that as success, which is what scripts usually want.
+    `{path}` already exists, so `mkdir` changed nothing and reported "File exists".
+    `mkdir -p {path}` treats an existing directory as success, which is what scripts usually want.
+  why: |
+    `mkdir` creates a new directory and refuses if a file or directory with that name is
+    already there, because silently reusing an existing one could hide a mistake in a
+    script. Nothing was changed. If your intent is "make sure this directory exists",
+    the `-p` flag (parents) says so: it creates any missing levels and treats "already
+    exists" as success, so the command can be run any number of times safely. That
+    property, called idempotence, is what you want in every setup script you will write.
+    Ways forward:
+      1. `ls -ld {path}`               see what is already there and what type it is
+      2. `mkdir -p {path}`             quiet if it exists, creates it if not
+      3. `mkdir {path}-2`              use a different name if you wanted a new one
   man: [mkdir(1)]
   cooldown: 3600
   priority: 10
@@ -69,7 +101,19 @@
     command: '^mkdir\s+(?P<path>[^-\s]\S*/\S+)\s*$'
     probe: missing:{path}
   hint: >-
-    A parent directory in that path does not exist yet. `mkdir -p {path}` creates the whole chain.
+    A parent directory in `{path}` does not exist yet, and plain `mkdir` only creates the last name in the path.
+    `mkdir -p {path}` creates the whole chain in one go.
+  why: |
+    Directories are nested, and to create `a/b/c` the directories `a` and `a/b` must exist
+    first. Plain `mkdir` creates exactly the last component you name and stops with "No
+    such file or directory" if the path leading to it is missing, so that a typo in the
+    middle of a path does not quietly produce a tree in the wrong place. The `-p` flag
+    (parents) changes that: it creates every missing level from the top down and does not
+    complain about the ones that already exist.
+    Ways forward:
+      1. `mkdir -p {path}`             create every missing level
+      2. `ls -ld <parent>`             check which part of the path is missing
+      3. `pridwen explain mkdir`       the flags in plain English
   man: [mkdir(1)]
   cooldown: 3600
   priority: 5
@@ -81,14 +125,18 @@
     probe: missing:{dest}
   hint: >-
     The destination directory `{dest}` does not exist, so `{cmd}` had nowhere to put the file.
-    `mkdir -p {dest}` first, then run it again.
+    `mkdir -p {dest}` first, then run the same `{cmd}` again.
   why: |
-    With a trailing slash you told `{cmd}` the target is a directory. It will copy into an
-    existing directory but never create one for you.
+    A trailing slash on the destination tells `{cmd}` that the target is a directory and
+    the file should go inside it. That is a good habit, because without the slash a
+    missing directory would silently become the file's new name. `{cmd}` will copy or move
+    into a directory that exists, but it never creates one, so the answer was "Not a
+    directory" or "No such file or directory". Create the directory, then repeat the
+    command exactly as you typed it; the up arrow brings it back.
     Ways forward:
-      1. `mkdir -p {dest}`          create it
-      2. `{cmd} file {dest}`         then repeat the copy or move
-      3. `cp --parents` / `rsync -a` keep a tree structure when copying many files
+      1. `mkdir -p {dest}`             create it
+      2. `{cmd} file {dest}`           then repeat the copy or move
+      3. `cp --parents` / `rsync -a`   keep a tree structure when copying many files
   man: [cp(1), mv(1), mkdir(1)]
   cooldown: 1800
   priority: 10
@@ -99,7 +147,19 @@
     command: '^cp\s+(?P<src>[^-\s]\S*)\s+\S+\s*$'
     probe: is_dir:{src}
   hint: >-
-    `cp` needs `-r` to copy a directory: `cp -r {src} dest`. `-a` also keeps modes and timestamps.
+    `{src}` is a directory, and `cp` skipped it ("omitting directory") because copying everything inside needs `-r`.
+    `cp -r {src} dest` copies the tree; `cp -a` also keeps modes and timestamps.
+  why: |
+    A directory is a list of other files and directories, so copying it means copying
+    everything below it, which could be one file or a million. `cp` wants you to say that
+    you mean all of them with `-r` (recursive), and until you do it prints "omitting
+    directory" and copies nothing. `-a` (archive) implies `-r` and also preserves each
+    file's permissions, ownership where allowed, and timestamps, which is what you want
+    when backing up configuration or a home directory.
+    Ways forward:
+      1. `cp -r {src} dest`            copy the directory and its contents
+      2. `cp -a {src} dest`            the same, keeping modes and timestamps
+      3. `ls -R {src} | head`          see how much is under it first
   man: [cp(1)]
   cooldown: 3600
   priority: 8
@@ -110,7 +170,19 @@
     command: '^(cat|less|more|head|tail)\s+(?P<path>[^-\s]\S*)\s*$'
     probe: is_dir:{path}
   hint: >-
-    `{path}` is a directory, and `{cmd}` reads files. `ls -l {path}` lists it; `tree {path}` if you have it.
+    `{path}` is a directory, and `{cmd}` reads the contents of files, so it answered "Is a directory".
+    `ls -l {path}` lists what is inside; then `{cmd}` one of the files it shows.
+  why: |
+    `cat`, `less`, `head` and `tail` read a stream of bytes from a file and show it to you.
+    A directory is not a stream of text; it is a table of names that the kernel manages,
+    so reading it as a file is refused. The tool for looking inside a directory is `ls`,
+    and once you can see the file names, any of the readers will open one of them. This is
+    a common slip when Tab completion stops at a directory name because several files
+    inside it share a prefix.
+    Ways forward:
+      1. `ls -l {path}`                list the files in it with their sizes
+      2. `{cmd} {path}/<file>`         read one of the files it holds
+      3. `tree {path}`                 the whole subtree at once, if `tree` is installed
   man: [ls(1)]
   cooldown: 3600
   priority: 8
@@ -122,14 +194,20 @@
     exit: [2]
     probe: is_dir:{path}
   hint: >-
-    `grep` searched a directory as if it were a file. Add `-r` to walk it: `grep -rn {pattern} {path}`.
+    `grep` searched `{path}` as if it were a single file, but it is a directory ("Is a directory", exit 2).
+    Add `-r` to walk every file below it: `grep -rn {pattern} {path}`.
   why: |
-    grep reads the files you name. A directory is not a stream of text, so it reports
-    "Is a directory" and exits 2. `-r` recurses, `-n` shows line numbers, `-i` ignores case.
+    `grep` prints the lines of a file that match a pattern. Given a directory it has no
+    lines to read, so it reports "Is a directory" and exits 2. The `-r` flag (recursive)
+    tells it to descend into the directory and search every file it finds, printing the
+    file name before each matching line. `-n` adds the line number and `-i` ignores case.
+    Searching a whole configuration tree this way, `grep -rn setting /etc`, is one of the
+    most useful habits an admin has, because it finds where something is set.
     Ways forward:
-      1. `grep -rn {pattern} {path}`         search every file below it
-      2. `grep -rl {pattern} {path}`         just the file names
-      3. `grep -rn --include='*.conf' ...`   limit by name
+      1. `grep -rn {pattern} {path}`           search every file below it, with line numbers
+      2. `grep -rl {pattern} {path}`           just the names of matching files
+      3. `grep -rn --include='*.conf' {pattern} {path}`   limit the search by file name
+      4. `pridwen explain grep`                the rest of the flags
   man: [grep(1)]
   cooldown: 3600
   priority: 10
@@ -141,15 +219,19 @@
     exit: [1]
     not_sudo: true
   hint: >-
-    `find` keeps walking after each "Permission denied" but exits 1 to say it missed some.
+    `find` kept walking after each "Permission denied" but exited 1 to admit it could not enter some directories; the results it printed are still good.
     Add `2>/dev/null` to hide those lines, or `sudo find` when you truly need root's view.
   why: |
-    Directories such as `/root`, other users' homes and parts of `/var` are closed to you.
-    find reports each one on stderr and carries on; the results on stdout are still good.
+    Some directories under `{path}`, such as `/root`, other users' homes and parts of
+    `/var`, are closed to your account by their mode, which is how Linux keeps each user's
+    files private. `find` reports each one it cannot enter on stderr (the error stream)
+    and carries on, so the matches it prints on stdout are complete for everything you are
+    allowed to see. The exit code 1 is honesty, not failure. Sending stderr to `/dev/null`,
+    the file that discards everything, hides the complaints without losing a result.
     Ways forward:
-      1. `find {path} -name '*.conf' 2>/dev/null`   quiet
-      2. `sudo find {path} -name ...`                 full tree, logged as a sudo use
-      3. `locate` is not installed; `find` from a narrower start directory is faster
+      1. `find {path} -name '*.conf' 2>/dev/null`   the same search, complaints hidden
+      2. `sudo find {path} -name ...`                root's full view, recorded in the journal
+      3. `find {home} -name ...`                     start from a directory you own instead
   man: [find(1)]
   cooldown: 3600
 - id: file-find-unquoted-glob
@@ -159,8 +241,19 @@
     command: '^find\s+.*-(i?name|path)\s+[^''"\s]*\*'
     exit: any
   hint: >-
-    An unquoted `*` is expanded by the shell before `find` runs, so the pattern only works by luck.
-    Quote it: `find . -name '*.log'`.
+    An unquoted `*` is expanded by the shell into matching names in the current directory before `find` runs, so the pattern only works by luck.
+    Quote it so `find` sees the star: `find . -name '*.log'`.
+  why: |
+    The shell rewrites your line before running it, and one of those rewrites turns
+    `*.log` into the list of files in the current directory that match. If there is one,
+    `find` receives that single file name instead of a pattern and searches for exactly
+    it; if there are several, `find` complains that "paths must precede expression".
+    Single quotes stop the shell from touching the pattern, so `find` receives the star
+    and applies it in every directory it visits, which is what you meant.
+    Ways forward:
+      1. `find . -name '*.log'`        the pattern in single quotes
+      2. `find . -iname '*.LOG'`       the same, ignoring case
+      3. `echo *.log`                  see what the shell would have expanded it into
   man: [find(1), bash(1)]
   cooldown: 86400
   priority: 5
@@ -170,14 +263,19 @@
   when:
     command: '^tar\s+-?[xcta-eg-zA-Z]*[xct][a-eg-zA-Z]*\s+\S+'
   hint: >-
-    Without `f`, `tar` looks for a tape drive instead of your file. Put `f` last in the cluster: `tar xzf archive.tar.gz`.
+    Without `f`, `tar` looks for a tape drive instead of your file, so it never opened the archive.
+    Put `f` last in the cluster and the archive name right after it: `tar xzf archive.tar.gz`.
   why: |
-    tar predates files as archives. `f` says "the next word is the archive", and because
-    it consumes the next word it must be the final letter in the cluster.
+    `tar` stands for tape archive, and it is older than the idea of an archive being a
+    file. Its default is still to read from or write to a tape device, so you have to say
+    `f` (file) to point it at a file instead. Because `f` takes the archive name as the
+    very next word, it must be the last letter in a cluster like `xzf`. The other common
+    letters are `x` extract, `c` create, `t` list, `z` gzip, `v` verbose, one file per line.
     Ways forward:
-      1. `tar tf archive.tar.gz`         list contents first
+      1. `tar tf archive.tar.gz`         list the contents first
       2. `tar xzf archive.tar.gz`        extract
       3. `tar czf backup.tar.gz dir/`    create
+      4. `pridwen explain tar`           every letter explained
   man: [tar(1)]
   cooldown: 3600
   priority: 8
@@ -187,8 +285,19 @@
   when:
     command: '^tar\s+-?[a-zA-Z]*f[a-zA-Z]+\s'
   hint: >-
-    `f` has to be the last letter in the cluster because it takes the archive name that follows it.
+    `f` has to be the last letter in the cluster because it takes the archive name that follows it; here another letter followed it instead.
     `tar xzf file.tar.gz`, not `tar xfz`.
+  why: |
+    In a cluster like `xzf`, `tar` reads the letters left to right and `f` means "the next
+    word is the archive file". If another letter comes after `f`, that letter is read as
+    the archive name, so `tar xfz file.tar.gz` tries to open an archive called `z` and then
+    treats `file.tar.gz` as a member to extract. The order of the other letters does not
+    matter, but `f` must come last. Most people settle on `xzf`, `czf` and `tf` and never
+    think about it again.
+    Ways forward:
+      1. `tar xzf file.tar.gz`         extract a gzip-compressed archive
+      2. `tar tf file.tar.gz`          list without extracting
+      3. `tar xf file.tar.xz`          modern tar detects the compression itself
   man: [tar(1)]
   cooldown: 3600
   priority: 9
@@ -199,7 +308,19 @@
     command: '^tar\s+.*f\s+(?P<path>\S+)'
     probe: missing:{path}
   hint: >-
-    `{path}` is not here. `ls *.tar*` finds archives in this directory; a download usually lands in `~/Downloads`.
+    There is no archive called `{path}` in the directory you are standing in, so `tar` had nothing to open.
+    `ls *.tar*` finds archives here; a download usually lands in `~/Downloads`.
+  why: |
+    `tar` opens the archive named after `f` relative to your working directory unless the
+    path starts with `/` or `~`. The usual causes are a typo in the name, an archive that
+    is still in `~/Downloads` while your shell is standing in your home, or a download
+    that did not finish. `tar` does not search for archives, it only opens the one you
+    name, so confirm the name and location first and then either `cd` next to it or give
+    the full path.
+    Ways forward:
+      1. `ls -l *.tar*`                archives in this directory
+      2. `ls ~/Downloads`              where the browser puts downloads
+      3. `tar xzf ~/Downloads/{path}`  open it by its full path
   man: [tar(1)]
   cooldown: 3600
   priority: 10
@@ -210,7 +331,18 @@
     command: '^(gzip|bzip2|xz|zstd)\s+(?P<path>[^-\s]\S*)\s*$'
     probe: is_dir:{path}
   hint: >-
-    `{cmd}` compresses single files. For a directory, bundle it first: `tar czf {path}.tar.gz {path}`.
+    `{cmd}` compresses one file at a time and `{path}` is a directory, so it refused.
+    Bundle the directory into one file first, compressing as you go: `tar czf {path}.tar.gz {path}`.
+  why: |
+    On Linux, bundling and compressing are two separate jobs done by two separate tools.
+    `tar` gathers many files and directories into one archive file, and `gzip`, `bzip2`,
+    `xz` or `zstd` shrink a single file. That is why `{cmd}` on a directory says "is a
+    directory" and stops. `tar` can call the compressor for you with `z` (gzip), `j`
+    (bzip2) or `J` (xz), which is how the familiar `.tar.gz` files are made in one step.
+    Ways forward:
+      1. `tar czf {path}.tar.gz {path}`   bundle and gzip in one go
+      2. `tar cJf {path}.tar.xz {path}`   the same with xz, smaller and slower
+      3. `{cmd} <one file>`               compress a single file with this tool
   man: [gzip(1), tar(1)]
   cooldown: 3600
   priority: 8
@@ -221,8 +353,20 @@
     command: '^ls\s+-[A-Za-z]*l'
     exit: [0]
   hint: >-
-    That long listing reads left to right as mode, link count, owner, group, size, modified time, name.
-    `pridwen learn perm-01` decodes the mode column.
+    That long listing reads left to right as mode, link count, owner, group, size in bytes, modification time, name.
+    `pridwen learn perm-01` decodes the mode column, the ten characters at the start.
+  why: |
+    `ls -l` is the view of a directory that admins use most, because one line carries
+    almost everything about a file. The first column is the mode: a type character (`-`
+    file, `d` directory, `l` link) then nine permission bits for the owner, the group and
+    everyone else, with a trailing `.` meaning the file has an SELinux label. Then the
+    link count, the owning user, the owning group, the size in bytes, the time the
+    contents last changed, and the name. Nothing went wrong here; the Coach mentions it
+    once so the columns have names.
+    Ways forward:
+      1. `ls -lah`                     dot files too, sizes in K and M
+      2. `ls -lt`                      newest first
+      3. `pridwen learn perm-01`       how to read the mode column
   man: [ls(1)]
   cooldown: 604800
   priority: -10
@@ -233,8 +377,19 @@
     command: '^rm\s+(-\S+\s+)*\S+\s+\*\s*$'
     exit: any
   hint: >-
-    A space before `*` makes it a separate argument, so `rm` also removed everything in the current directory.
+    A space before `*` makes it a separate argument, so `rm` was also given everything in the current directory.
     Write the pattern as one word, like `rm *.log`, and preview it with `ls *.log` first.
+  why: |
+    The shell expands `*` into every name in the current directory before `rm` runs. When
+    the star is attached to a pattern, `*.log`, it only matches names ending in `.log`.
+    When a space separates it, `rm foo *`, the star stands alone and matches everything,
+    so `rm` received the whole directory as its argument list. `rm` does what it is told
+    and has no undo. Previewing a pattern with `ls` shows exactly what the shell will
+    expand it to, which is the safest habit in this whole node.
+    Ways forward:
+      1. `ls *.log`                    preview what the pattern matches
+      2. `rm -i *.log`                 remove them, asking about each one
+      3. `pridwen learn term-03`       how the shell expands globs before a command runs
   man: [rm(1), bash(1)]
   cooldown: 3600
   priority: 40
@@ -247,16 +402,20 @@
     exit: [1, 2]
     probe: missing:{path}
   hint: >-
-    There is no `{path}` from here. `ls` shows what this directory holds; `ls -d {path}*` catches a near-miss, and `pwd` confirms where you are.
+    There is no `{path}` in the directory you are standing in, so `{cmd}` could not open it.
+    `ls` shows what is here, `ls -d {path}*` catches a near-miss in the name, and `pwd` confirms where you are.
   why: |
-    The shell handed `{path}` to `{cmd}`, which asked the kernel to open it and got
-    ENOENT: no such file or directory. Paths are resolved from the current directory
-    unless they start with `/`, so the usual causes are a typo, a different working
-    directory than you think, or a file that was moved.
+    The shell handed `{path}` to `{cmd}`, which asked the kernel to open it and was told
+    "No such file or directory". Paths are resolved from the current working directory
+    unless they start with `/` or `~`, so the usual causes are a typo, a different working
+    directory than you think, or a file that was moved or never created. Nothing is
+    broken. The prompt shows your location; `ls` shows the real names; Tab completion
+    avoids the retype next time.
     Ways forward:
-      1. `ls -la`                     see what is actually here
-      2. `ls -d {path}*`              look for a near-miss in the name
-      3. `find ~ -name '{path}'`      search your home for it by name
+      1. `ls -la`                      see what is actually here
+      2. `ls -d {path}*`               look for a near-miss in the name
+      3. `find {home} -name '{path}'`  search your home for it by name
+      4. `pwd`                         confirm where "here" is
   man: [ls(1), find(1)]
   cooldown: 900
   priority: 3

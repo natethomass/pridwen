@@ -8,14 +8,17 @@
     command: '^crontab\s+-[el]\b'
     exit: any
   hint: >-
-    cron is not installed by default on Pridwen; systemd timers do the same job with logs and status. `systemctl --user list-timers` shows yours, and a `.timer` plus `.service` pair replaces a crontab line.
+    cron is not installed on Pridwen; systemd timers do the same job and log every run. `systemctl --user list-timers` shows yours, and a `.timer` plus `.service` pair replaces a crontab line.
   why: |
-    A systemd timer records each run in the journal, shows its next fire time in
-    `list-timers`, and can depend on other units. cron works, but a timer is easier to
-    see and debug, so Pridwen leads with it.
+    You reached for a crontab, the traditional table of scheduled commands. Pridwen
+    does not ship cron because a systemd timer does the same job with two things cron
+    lacks: every run is recorded in the journal, and `list-timers` shows exactly when
+    the next run is, so "did it run last night" and "when is the next one" are each one
+    command. A timer is a `.timer` file saying when and a `.service` file saying what,
+    kept under `~/.config/systemd/user/` for jobs that run as you, no root needed.
     Ways forward:
       1. `systemctl --user list-timers --all`          what runs and when
-      2. write `job.service` and `job.timer` in `~/.config/systemd/user/`
+      2. `pridwen learn timer-01`                      write a `.service` and `.timer` pair
       3. `systemctl --user enable --now job.timer`      turn it on
   man: [systemd.timer(5), systemctl(1)]
   cooldown: 86400
@@ -28,7 +31,19 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    cron is not in the image. Use a systemd timer, or layer cron with `rpm-ostree install cronie` if a script truly expects it.
+    `{cmd}` is not in the image (exit 127). Use a systemd timer, which logs every run; if a course truly requires cron, `rpm-ostree install cronie` layers it at the cost of slower upgrades.
+  why: |
+    The shell searched PATH for `{cmd}` and found nothing, so it printed "command not
+    found". Pridwen leaves cron out of the image on purpose: systemd timers are already
+    there, they record each run in the journal, and `systemctl --user list-timers` shows
+    the next fire time, which a crontab cannot. Layering cron with `rpm-ostree install
+    cronie` works, but every layered package is rebuilt into each `bootc upgrade` and
+    slows it, so the trade is only worth it when something outside your control expects
+    `crond`.
+    Ways forward:
+      1. `systemctl --user list-timers --all`       see what is scheduled already
+      2. `pridwen learn timer-01`                   a timer pair instead of a crontab line
+      3. `rpm-ostree install cronie`                layer cron, if you must
   man: [systemd.timer(5), rpm-ostree(1)]
   cooldown: 86400
   priority: 10
@@ -39,7 +54,18 @@
     command: 'OnCalendar='
     exit: any
   hint: >-
-    `systemd-analyze calendar "Mon *-*-* 09:00"` shows the next times a spec will fire, so you can check it before enabling. `daily`, `weekly` and `*-*-* 03:00` are common forms.
+    Before enabling a timer, check its schedule: `systemd-analyze calendar "Mon *-*-* 09:00"` prints the next times that expression fires. `daily`, `weekly` and `*-*-* 03:00` are common forms.
+  why: |
+    `OnCalendar=` is the line in a `.timer` file that says when it fires, in systemd's
+    own grammar: day of week, then year-month-day, then hour:minute:second, with `*`
+    meaning every. A misplaced field runs the job on the wrong day without any error,
+    so systemd provides a checker: `systemd-analyze calendar` prints the normalized form
+    and the next elapse, and `--iterations 3` shows three future runs so a repeating
+    pattern can be confirmed. Reading the normalized form back is the whole check.
+    Ways forward:
+      1. `systemd-analyze calendar "Mon *-*-* 09:00"`       next time it would fire
+      2. `systemd-analyze calendar --iterations 3 daily`    three future runs
+      3. `systemctl --user list-timers`                     what the enabled timer says
   man: [systemd.time(7), systemd-analyze(1)]
   cooldown: 86400
   priority: 5
@@ -50,7 +76,18 @@
     command: '^systemctl\s+(--user\s+)?enable\s+(--now\s+)?(?P<unit>\S+\.service)\s*$'
     exit: [0]
   hint: >-
-    Enabling the `.service` alone does not schedule it; the paired `.timer` is what fires it. `systemctl --user enable --now {unit}` becomes the timer of the same name.
+    Enabling `{unit}` alone does not put it on a schedule; only the paired `.timer` fires it repeatedly. Enable the timer of the same name instead, with `enable --now` on the `.timer`.
+  why: |
+    `enable` on a service hooks it into a target so it starts once at boot or login,
+    and that is all. A timer is the unit that watches the clock and starts the service
+    each time the schedule comes round, so the timer is what has to be enabled. Enabling
+    both is harmless but usually not what you meant, because the service would also run
+    once at every login regardless of the schedule. `list-timers` will show the timer
+    only once it is enabled or started.
+    Ways forward:
+      1. `systemctl --user disable {unit}`                 undo the service enable if unintended
+      2. `systemctl --user enable --now name.timer`        enable the timer of the same name
+      3. `systemctl --user list-timers`                    confirm it is scheduled
   man: [systemd.timer(5)]
   cooldown: 86400
   priority: -3
@@ -61,7 +98,19 @@
     command: 'Persistent=true'
     exit: any
   hint: >-
-    `Persistent=true` runs a missed job once after the machine comes back, which is what you want for a laptop that is not always on at 03:00. `OnCalendar` timers support it; monotonic ones do not.
+    `Persistent=true` runs a missed job once when the machine comes back, which a laptop asleep at 03:00 needs. It applies to `OnCalendar` timers; monotonic ones like `OnBootSec` have nothing to catch up.
+  why: |
+    A timer with `OnCalendar` fires at a wall-clock moment, and if the machine is off
+    at that moment the elapse simply passes. With `Persistent=true`, systemd remembers
+    when the timer last fired, notices at the next start that a scheduled time went by,
+    and runs the service once straight away. On a machine that is always on it changes
+    nothing, so it is safe to write everywhere. Monotonic timers, `OnBootSec` and
+    `OnUnitActiveSec`, count time only while running, so there is no missed moment for
+    them and the setting does not apply.
+    Ways forward:
+      1. `systemctl --user list-timers`                  LAST shows when it really ran
+      2. `journalctl --user -u name.service --since -7d`  the catch-up runs are logged
+      3. `pridwen learn timer-02`                        calendar and monotonic timers
   man: [systemd.timer(5)]
   cooldown: 86400
   priority: -5
@@ -73,7 +122,18 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `at` is not in the image. `systemd-run --on-calendar="2026-09-05 09:00" command` schedules a single future run instead.
+    `{cmd}` is not in the image (exit 127). `systemd-run --user --on-calendar="2026-09-08 09:00" command` schedules one future run the same way, and it shows in `list-timers` until it fires.
+  why: |
+    `at` scheduled a command once, at a given time, and Pridwen does not ship it because
+    `systemd-run` already does that: it creates a transient timer and service on the
+    spot, logs the run in the journal, and removes both units when the job is done.
+    `--on-active=30s` means a delay from now, `--on-calendar` an absolute time in the
+    same grammar as a timer file, and the command needs its full path because the unit
+    does not use your shell's PATH. `list-timers` shows the pending job like any other.
+    Ways forward:
+      1. `systemd-run --user --on-active=10min /usr/bin/command`     run once, in ten minutes
+      2. `systemd-run --user --on-calendar="2026-09-08 09:00" /usr/bin/command`  at a time
+      3. `systemctl --user list-timers`                                see it waiting
   man: [systemd-run(1)]
   cooldown: 86400
   priority: 10

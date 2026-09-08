@@ -8,7 +8,18 @@
     command: '^firewall-cmd\b'
     not_sudo: true
   hint: >-
-    `firewall-cmd` talks to firewalld over D-Bus and polkit refuses non-root callers, even for reads. `sudo firewall-cmd --list-all` shows the active zone.
+    `firewall-cmd` talks to firewalld over D-Bus, and firewalld answers only root, even for reads, so that was refused. `sudo firewall-cmd --list-all` shows the active zone.
+  why: |
+    `firewall-cmd` is a client. It sends your request over D-Bus to the firewalld daemon,
+    and firewalld's polkit rule accepts requests from root only, for reads as much as
+    writes, which is why even `--list-all` failed with `Authorization failed`. The
+    reasoning is that the set of open ports is security-relevant information and changing
+    it is a privileged action, so the whole interface is behind `sudo`. Reading never
+    changes anything, so putting `sudo` in front of a `--get` or `--list` query is safe.
+    Ways forward:
+      1. `sudo firewall-cmd --get-active-zones`     which zone is judging traffic; on Pridwen, drop
+      2. `sudo firewall-cmd --list-all`             everything the active zone allows
+      3. `sudo firewall-cmd --get-default-zone`     the zone new interfaces fall into
   man: [firewall-cmd(1)]
   cooldown: 3600
   priority: 5
@@ -19,15 +30,20 @@
     command: '^sudo\s+firewall-cmd\s+(?!.*--permanent).*--add-(port|service|source|rich-rule)\b'
     exit: [0]
   hint: >-
-    That change is runtime only and disappears at the next reload or reboot. `sudo firewall-cmd --runtime-to-permanent` keeps it, or repeat the command with `--permanent`.
+    That change is live now but runtime only, so it disappears at the next reload or reboot. `sudo firewall-cmd --runtime-to-permanent` keeps it once you have tested it, or repeat the command with `--permanent` and `--reload`.
   why: |
-    firewalld keeps two configurations: runtime (what the kernel has now) and permanent
-    (files under `/etc/firewalld/`). A runtime change is a good way to test; making it
-    permanent is a separate step so a mistake does not survive a reboot.
+    firewalld keeps two configurations: runtime, the rules the kernel is using this
+    second, and permanent, the files under `/etc/firewalld/` that load at reload or
+    boot. Without `--permanent`, `--add-service` and `--add-port` change only the
+    runtime copy. That is a good way to test: if the change was wrong, `--reload`
+    throws it away and you are back to Pridwen's default of nothing open. Making it
+    permanent is a separate step on purpose, so a mistake never survives a reboot
+    unless you chose to keep it. Read the live list after every change.
     Ways forward:
-      1. `sudo firewall-cmd --runtime-to-permanent`     save what is live
-      2. `sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload`
-      3. `sudo firewall-cmd --list-all --permanent`     what will be there after reboot
+      1. `sudo firewall-cmd --runtime-to-permanent`           save everything that is live
+      2. `sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload`   the other order
+      3. `sudo firewall-cmd --list-all --permanent`           what will be there after a reboot
+      4. `sudo firewall-cmd --reload`                         discard the runtime change instead
   man: [firewall-cmd(1)]
   cooldown: 86400
   priority: -2
@@ -38,7 +54,19 @@
     command: '^sudo\s+firewall-cmd\s+.*--permanent.*--(add|remove)-'
     exit: [0]
   hint: >-
-    Permanent changes are written to disk but not applied until `sudo firewall-cmd --reload`. Until then `--list-all` still shows the old runtime rules.
+    That was saved to disk but is not live yet: permanent changes apply only after `sudo firewall-cmd --reload`. Until then `--list-all` still shows the old runtime rules.
+  why: |
+    A `--permanent` change writes to the zone files under `/etc/firewalld/zones/` and
+    leaves the running rules alone. firewalld loads those files only at a reload or a
+    boot, so the port or service you just added is not open, and one you removed is
+    still open, until you reload. This is the most common firewall confusion there is,
+    and the design reason is the same as for runtime changes: the two copies are kept
+    apart so you can prepare a set of saved rules and switch to them in one step. Read
+    the live list after the reload to confirm.
+    Ways forward:
+      1. `sudo firewall-cmd --reload`                         load the saved rules now
+      2. `sudo firewall-cmd --list-all`                       the live rules after the reload
+      3. `sudo firewall-cmd --list-all --permanent`           the saved rules, to compare
   man: [firewall-cmd(1)]
   cooldown: 86400
   priority: -2
@@ -49,7 +77,21 @@
     command: '^(sudo\s+)?(iptables|ip6tables|iptables-save|iptables-restore)\b'
     exit: any
   hint: >-
-    firewalld owns the nftables ruleset here, and hand-written iptables rules are ignored or overwritten at the next reload. `sudo nft list ruleset` shows the truth; `firewall-cmd` changes it.
+    firewalld owns the nftables ruleset here, so hand-written iptables rules are ignored or overwritten at its next reload. `sudo nft list ruleset` shows the real rules; `sudo firewall-cmd` is what changes them.
+  why: |
+    On Fedora the kernel's packet filter is nftables, and firewalld is the program that
+    writes the rules into it, in a table it owns called `firewalld`. `iptables` is the
+    older tool; at best it is a compatibility layer writing into a separate table that
+    firewalld does not look at, and any rule it adds is dropped or contradicted the next
+    time firewalld reloads. Two tools fighting over the same firewall is exactly how a
+    server ends up open when it looks closed, which is why one tool owns the ruleset.
+    Tutorials written for other systems still say `iptables`; translate them into a zone,
+    a service, or a port.
+    Ways forward:
+      1. `sudo nft list ruleset | less`                       the rules actually loaded
+      2. `sudo firewall-cmd --add-port=8080/tcp`              open one port, the firewalld way
+      3. `sudo firewall-cmd --list-all`                       what the active zone allows
+      4. `pridwen learn fw-03`                                how firewalld and nftables fit together
   man: [firewall-cmd(1), nft(8)]
   cooldown: 86400
   priority: 20
@@ -60,7 +102,20 @@
     command: '^(sudo\s+)?ufw\b'
     exit: any
   hint: >-
-    `ufw` is Ubuntu's front end. On Fedora the front end is `firewall-cmd`; `sudo firewall-cmd --add-service=ssh --permanent` is the shape of an allow rule.
+    `ufw` is Ubuntu's firewall front end and is not installed here. On Fedora the front end is `firewall-cmd`; `sudo firewall-cmd --add-service=ssh --permanent` is the shape of an allow rule.
+  why: |
+    Every Linux distribution filters packets with the same kernel machinery, but the
+    front end differs. Ubuntu ships `ufw`, the "uncomplicated firewall"; Fedora, Rocky
+    and RHEL ship firewalld with its `firewall-cmd` client, and that is what Pridwen
+    uses, with the `drop` zone as its default. `ufw allow ssh` becomes
+    `firewall-cmd --add-service=ssh`, `ufw allow 8080/tcp` becomes
+    `--add-port=8080/tcp`, and `ufw status` becomes `--list-all`. Installing `ufw` here
+    would put two programs in charge of one ruleset, which is the situation to avoid.
+    Ways forward:
+      1. `sudo firewall-cmd --list-all`                       what is allowed now (ufw status)
+      2. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`   allow a service
+      3. `sudo firewall-cmd --get-services`                   the service names firewalld knows
+      4. `pridwen learn fw-01`                                zones and the drop zone
   man: [firewall-cmd(1)]
   cooldown: 86400
   priority: 20
@@ -70,7 +125,20 @@
   when:
     command: '^sudo\s+firewall-cmd\s+.*--zone=(?P<zone>\S+)'
   hint: >-
-    If firewalld said INVALID_ZONE, `{zone}` is not one of its zones. `sudo firewall-cmd --get-zones` lists them; Pridwen's active one is `drop`.
+    If firewalld answered INVALID_ZONE, `{zone}` is not a zone it knows, so nothing changed. `sudo firewall-cmd --get-zones` lists the real names; Pridwen's active one is `drop`.
+  why: |
+    A zone is a named policy that firewalld applies to the interfaces or source addresses
+    assigned to it, and it only knows the zones defined in its own files: `drop`,
+    `block`, `public`, `home`, `work`, `trusted`, and a few more. `--zone={zone}` names
+    one that is not there, so firewalld refuses the whole command rather than guess.
+    Pridwen assigns every interface to `drop` by default, so a command without `--zone`
+    acts on that one, and for most changes you do not need the flag at all. Adding an
+    interface to a more open zone like `trusted` is a decision to make on purpose and
+    only for a network you control.
+    Ways forward:
+      1. `sudo firewall-cmd --get-zones`                      every zone name firewalld knows
+      2. `sudo firewall-cmd --get-active-zones`               which zone your interface is in
+      3. `sudo firewall-cmd --list-all --zone=public`         what a named zone allows
   man: [firewall-cmd(1), firewalld.zones(5)]
   cooldown: 3600
   priority: 5
@@ -80,7 +148,19 @@
   when:
     command: '^sudo\s+firewall-cmd\s+.*--add-service=(?P<name>\S+)'
   hint: >-
-    INVALID_SERVICE means firewalld has no definition named `{name}`. `sudo firewall-cmd --get-services` lists them; for anything else use `--add-port=8080/tcp`.
+    If firewalld answered INVALID_SERVICE, it has no definition named `{name}`, so nothing was opened. `sudo firewall-cmd --get-services` lists the names it knows; for anything else use `--add-port=8080/tcp`.
+  why: |
+    A firewalld service is a named shorthand for one or more ports and protocols: `http`
+    means 80/tcp, `ssh` means 22/tcp, `dns` means 53 on both tcp and udp. The names come
+    from definition files firewalld ships, about two hundred of them, and `{name}` is
+    not one of them, so firewalld refused rather than open a guess. For a program with
+    no definition, open its port and protocol directly; the number without the protocol
+    is ambiguous and is refused too. `--info-service` shows what a name would open,
+    which is worth checking before you trust a name.
+    Ways forward:
+      1. `sudo firewall-cmd --get-services`                   every service name firewalld knows
+      2. `sudo firewall-cmd --info-service=http`              what one name expands to
+      3. `sudo firewall-cmd --add-port=8080/tcp`              open a port directly, with its protocol
   man: [firewall-cmd(1), firewalld.service(5)]
   cooldown: 3600
   priority: 5
@@ -91,15 +171,21 @@
     command: '^sudo\s+systemctl\s+(stop|disable|mask)\s+(--now\s+)?firewalld\b'
     exit: any
   hint: >-
-    Stopping firewalld opens every listening port to the network at once. If one service is unreachable, open only its port: `sudo firewall-cmd --add-port=8080/tcp`.
+    Stopping firewalld removes every rule, so every listening port is open to the network at once. If one service is unreachable, open only its port instead: `sudo firewall-cmd --add-port=8080/tcp`.
   why: |
+    When firewalld stops it removes its table from the kernel, and with it the drop
+    zone, so every socket in `ss -tlnp` becomes reachable by whoever shares your network.
     The drop zone is what makes it safe to run a test web server or sshd on a laptop
-    that joins coffee-shop networks. Without it, every socket in `ss -tlnp` is reachable
-    by whoever shares the network.
+    that joins coffee-shop and hotel networks: a listening program is not a reachable
+    program until you open its port. A service that cannot be reached needs one port
+    opened, a change you can read back and remove later; switching the whole firewall
+    off trades one small problem for an unbounded one. Bring it back, then open the
+    single thing you need.
     Ways forward:
-      1. `sudo systemctl start firewalld`                       back on
-      2. `sudo firewall-cmd --add-port=8080/tcp`                the one hole you need, runtime
-      3. `sudo firewall-cmd --add-source=192.168.1.0/24 --zone=trusted`   trust one network
+      1. `sudo systemctl enable --now firewalld`              back on, and at every boot
+      2. `sudo firewall-cmd --add-port=8080/tcp`              the one hole you need, runtime, to test
+      3. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`   a named service, saved
+      4. `sudo firewall-cmd --add-source=192.168.1.0/24 --zone=trusted`   trust one network you control
   man: [firewalld(1), firewall-cmd(1)]
   cooldown: 3600
   priority: 40
@@ -110,7 +196,19 @@
     command: '^sudo\s+firewall-cmd\s+--panic-on\b'
     exit: any
   hint: >-
-    Panic mode drops every packet in both directions, including an SSH session you may be sitting in. `sudo firewall-cmd --panic-off` restores the zone rules.
+    Panic mode is now dropping every packet in both directions, including any SSH session you are sitting in. `sudo firewall-cmd --panic-off` restores the zone rules; a reboot also clears it.
+  why: |
+    `--panic-on` replaces the zone rules with a single rule that drops all traffic, in
+    and out. It exists for incidents: a host you suspect is compromised can be cut off
+    from the network in one command while staying powered on, so its memory, processes
+    and open connections remain as evidence. The cost is that nothing gets through,
+    including your own SSH session, which will freeze and not come back. Use it from the
+    machine's console, or when you are prepared to walk over. Panic mode is runtime
+    only and is not saved, so a reboot returns the normal zones.
+    Ways forward:
+      1. `sudo firewall-cmd --panic-off`                      back to the zone rules
+      2. `sudo firewall-cmd --query-panic`                    is panic mode on (yes or no)
+      3. `sudo firewall-cmd --list-all`                       confirm the drop zone is back in charge
   man: [firewall-cmd(1)]
   cooldown: 3600
   priority: 50
@@ -121,7 +219,20 @@
     command: '^nft\b'
     not_sudo: true
   hint: >-
-    The nftables ruleset is readable only by root: `sudo nft list ruleset`. It is what firewalld generated from the zones.
+    The nftables ruleset is readable only by root, so `nft` could not open it. `sudo nft list ruleset` prints the rules firewalld generated from its zones.
+  why: |
+    `nft` talks straight to the kernel's packet filter over netlink, and the kernel
+    allows only root to read or change the ruleset, so without `sudo` the command fails
+    with `Operation not permitted`. The ruleset shows every open port and every trusted
+    source on the machine, which is not something an unprivileged process should be
+    able to enumerate. On Pridwen the whole ruleset is written by firewalld from its
+    zones, so `nft list ruleset` is the way to see what a zone became, and
+    `firewall-cmd` is the way to change it; writing with `nft` by hand would be undone
+    at the next reload.
+    Ways forward:
+      1. `sudo nft list ruleset | less`                       the whole ruleset, page by page
+      2. `sudo nft list table inet firewalld`                 only firewalld's table
+      3. `sudo firewall-cmd --list-all`                       the same thing in zone terms
   man: [nft(8)]
   cooldown: 3600
   priority: 5
@@ -131,7 +242,20 @@
   when:
     command: '^sudo\s+firewall-cmd\s+.*--add-port=(?P<port>\d+)\s*$'
   hint: >-
-    A port needs its protocol: `--add-port={port}/tcp` or `{port}/udp`. A range is written `8000-8100/tcp`.
+    A port number alone is ambiguous, so firewalld refused it: write `--add-port={port}/tcp` or `{port}/udp`. A range is written `8000-8100/tcp`.
+  why: |
+    A port number identifies which program a packet is for, but the same number means a
+    different thing on TCP (connections: web, ssh) and on UDP (single packets: DNS, some
+    games). firewalld will not guess, so `--add-port={port}` is refused with
+    `INVALID_PORT` and the message "most likely missing protocol". The correct form is
+    always number, slash, protocol. Most services you will open are TCP; use `udp` when
+    the program's documentation says so, and open both only when it really listens on
+    both. Opening one exact port and protocol is the discipline that keeps what a scanner
+    sees as small as the job needs.
+    Ways forward:
+      1. `sudo firewall-cmd --add-port={port}/tcp`            the TCP port, runtime, to test
+      2. `sudo firewall-cmd --add-port={port}/udp`            if the program uses UDP
+      3. `ss -tlnp` and `ss -ulnp`                            which protocol the program actually listens on
   man: [firewall-cmd(1)]
   cooldown: 3600
   priority: 8

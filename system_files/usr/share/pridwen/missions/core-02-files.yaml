@@ -6,17 +6,33 @@ required: true
 minutes: 15
 target: host
 brief: |
-  For a month you have been dropping files from a USB stick into one directory
-  and promising to sort them later. Later is now. Press Start and the Academy
-  fills `~/pridwen/inbox` with that month: a report, some notes, a few images,
-  and two log files nobody will ever read.
+  For a month you have been dropping files from a USB stick into one
+  directory and promising to sort them later. Later is now. Press Start and
+  the Academy fills `~/pridwen/inbox` with that month: a report, some notes,
+  a few images, and two log files nobody will ever read. Start runs a small
+  setup script that creates those files for you, so every learner begins
+  from the same mess.
 
   The job is to give each file a home. Documents go in a `docs` directory,
-  images in `images`, and the logs go away. Before the report moves anywhere,
-  make a safety copy of it, because the command line has no recycle bin and
-  this is the habit that saves you the day a pattern matches more than you
-  meant. When you are done, the top of the inbox should hold nothing but the
-  two directories.
+  images in `images`, and the logs go away. Five tools do all of it: `ls`
+  lists what is in a directory, `mkdir` makes a directory, `mv` moves or
+  renames a file, `cp` copies one, and `rm` removes one for good. That last
+  word matters. The command line has no recycle bin: a removed file is gone,
+  and a moved file that lands on top of another silently replaces it. So
+  before the report moves anywhere, make a safety copy of it. This is the
+  habit that saves you the day a pattern such as `*.txt` matches more than
+  you meant it to. A pattern with `*` is a wildcard: the shell replaces it
+  with every matching name before the command runs, so the command never
+  sees the star, only the list.
+
+  On a job this is half of what "cleaning up a server" means: sorting
+  someone else's leftovers without destroying the one file that mattered.
+  Done looks like the top of `~/pridwen/inbox` holding nothing but the two
+  directories, `docs` holding the report, its copy and the notes, `images`
+  holding the three pictures, and no `.log` files anywhere. The checker
+  looks at where specific files ended up: it expects `photo1.jpg` inside
+  `images` and gone from the top, `report.txt` inside `docs`, a `report.bak`
+  beside it with the same words inside, and `old.log` removed.
 setup: |
   rm -rf ~/pridwen/inbox
   mkdir -p ~/pridwen/inbox
@@ -29,36 +45,77 @@ setup: |
   printf '2026-08-30 10:00:01 INFO nothing happened\n' > old.log
   printf '2026-08-31 10:00:01 INFO still nothing\n' > older.log
 steps:
-  - Look at what is in `~/pridwen/inbox` before you move anything.
-  - Make `docs` and `images` directories inside the inbox and move each file into the one that fits.
-  - Keep a safety copy of `report.txt` in `docs`, named `report.bak`.
-  - Remove the two `.log` files.
-  - Confirm the top of the inbox holds only the two directories.
+  - >-
+    List `~/pridwen/inbox` with `ls` and ask `file` what each one really is.
+    Expect seven files and no directories.
+  - >-
+    Make `docs` and `images` inside the inbox with `mkdir`. Expect `ls` to
+    show nine names now, two of them directories.
+  - >-
+    Copy `report.txt` with `cp` so that `docs/report.bak` exists before the
+    original moves anywhere. Expect the copy to read the same as the original
+    when you `cat` it.
+  - >-
+    Move the report and the notes into `docs`, and the `.jpg` and `.png`
+    files into `images`, with `mv`. Expect the top of the inbox to hold only
+    the two logs and the two directories.
+  - >-
+    Remove the two `.log` files with `rm`. Expect `ls` to show `docs` and
+    `images` and nothing else.
 hints:
-  - "`ls -l` shows what is there; `file *` guesses what each one is from its content rather than its name."
-  - "`mv *.jpg *.png images/` moves several files at once; check the pattern with `ls *.jpg *.png` first."
-  - "`cp docs/report.txt docs/report.bak` copies; `rm -i *.log` asks before each removal."
+  - >-
+    `ls -l` lists the directory one file per line with mode, owner, size and
+    date; `file *` reads the start of every file and guesses what it is from
+    the content rather than the name. Before you trust a pattern with `mv` or
+    `rm`, run `ls *.jpg` first: it shows you exactly which names the shell
+    will expand the pattern to.
+  - >-
+    `mkdir docs images` makes both directories. `cp SOURCE DESTINATION`
+    copies. `mv FILE... DIRECTORY/` moves several files into a directory, and
+    the trailing slash makes it fail loudly rather than rename if the
+    directory is missing. `rm -i PATTERN` asks before each removal (`-i` is
+    interactive) and is the safe way to point `rm` at a wildcard.
+  - >-
+    From inside the inbox (`cd ~/pridwen/inbox`): `mkdir docs images`, then
+    `cp report.txt docs/report.bak`, then `mv report.txt notes.md docs/`,
+    then `mv *.jpg *.png images/`, then `rm -i *.log` and answer `y` twice.
+    Finish with `ls` and `ls docs images`.
 checks:
   - id: image-moved
     type: path_exists
     path: "{home}/pridwen/inbox/images/photo1.jpg"
-    fail: "`images/photo1.jpg` is not there; the images belong in `~/pridwen/inbox/images`."
+    fail: >-
+      `~/pridwen/inbox/images/photo1.jpg` does not exist. The images belong
+      inside `images`; from the inbox, `mkdir -p images` then
+      `mv *.jpg *.png images/` puts them there.
   - id: image-not-copied
     type: path_missing
     path: "{home}/pridwen/inbox/photo1.jpg"
-    fail: "`photo1.jpg` is still at the top of the inbox; move it rather than copying it."
+    fail: >-
+      `photo1.jpg` is still at the top of the inbox, so it was copied rather
+      than moved, or not moved at all. `mv` moves; once the copy in `images`
+      is in place, `rm ~/pridwen/inbox/photo1.jpg` removes the leftover.
   - id: report-moved
     type: path_exists
     path: "{home}/pridwen/inbox/docs/report.txt"
-    fail: "`docs/report.txt` is not there; the report is a document."
+    fail: >-
+      `~/pridwen/inbox/docs/report.txt` does not exist. The report is a
+      document; `mv ~/pridwen/inbox/report.txt ~/pridwen/inbox/docs/` moves it
+      there (make the `docs` directory first if `mv` says it is missing).
   - id: report-backup
     type: path_contains
     path: "{home}/pridwen/inbox/docs/report.bak"
     regex: 'Quarterly report'
-    fail: "`docs/report.bak` should be a copy of the report, with the same words inside."
+    fail: >-
+      `docs/report.bak` is {actual} and does not contain `Quarterly report`;
+      it should be a copy of the report with the same words inside.
+      `cp ~/pridwen/inbox/docs/report.txt ~/pridwen/inbox/docs/report.bak`
+      makes it.
   - id: logs-gone
     type: path_missing
     path: "{home}/pridwen/inbox/old.log"
-    fail: "`old.log` is still there; the log files are the ones to remove."
+    fail: >-
+      `old.log` is still at the top of the inbox. The log files are the ones
+      to remove: `rm -i ~/pridwen/inbox/*.log` and answer `y` for each.
 cleanup: |
   rm -rf ~/pridwen/inbox

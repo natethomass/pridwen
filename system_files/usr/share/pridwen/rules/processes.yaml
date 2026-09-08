@@ -8,14 +8,19 @@
     command: '^kill\s+(-\S+\s+)*(?P<pid>\d+)\s*$'
     not_sudo: true
   hint: >-
-    You can only signal processes that run as you. `ps -o user=,comm= -p {pid}` shows who owns it; `sudo kill {pid}` if it is a system process you mean to stop.
+    The kernel refused because process {pid} does not run as you; you can only signal your own processes. `ps -o user=,comm= -p {pid}` shows who owns it, and `sudo kill {pid}` sends the signal as root if that is what you mean.
   why: |
-    The kernel checks that the sender's uid matches the target's before delivering a
-    signal. That is what stops one user from killing another's session, or a service.
+    Before delivering a signal the kernel compares your user id with the user id of the
+    target process, and it only delivers when they match or the sender is root. Process
+    {pid} belongs to someone else, so the request came back "Operation not permitted".
+    Pridwen keeps this rule strict on purpose: it is what stops one person's runaway loop
+    from ending another person's session, or a system service, by accident. If the process
+    is a service, systemd should stop it so it is not treated as a crash.
     Ways forward:
-      1. `ps -o user=,comm= -p {pid}`     who is it, what is it
+      1. `ps -o user=,comm= -p {pid}`     who owns it and what program it is
       2. `systemctl status {pid}`         if it belongs to a unit, stop the unit instead
-      3. `sudo kill {pid}`                as root, when that is the intent
+      3. `sudo kill {pid}`                as root, when ending it is really the intent
+      4. `pridwen learn proc-02`          the signals lesson
   man: [kill(1), signal(7), ps(1)]
   cooldown: 3600
   priority: 10
@@ -26,7 +31,17 @@
     command: '^(sudo\s+)?kill\s+(-\S+\s+)*(?P<pid>\d+)\s*$'
     exit: [1]
   hint: >-
-    If `kill` said "No such process", {pid} already exited. `pgrep -a name` finds the current pid by name.
+    `kill` said "No such process": nothing has pid {pid} any more, so it already exited or the number was mistyped. `pgrep -a name` finds the current pid by program name.
+  why: |
+    A pid names one process only while that process lives. When the program exits, the
+    number is freed, and `kill` can find nothing to deliver to, so it reports "No such
+    process". This is normal after a program you meant to stop has already finished, or
+    when a pid was copied from an old `ps` listing. Nothing on the system is broken.
+    Look the process up again by name so you are working from the current pid.
+    Ways forward:
+      1. `pgrep -a name`                  current pid and full command line by name
+      2. `ps aux | grep name`             the same, with owner and state columns
+      3. `pkill name`                     signal by name without copying a pid
   man: [kill(1), pgrep(1)]
   cooldown: 3600
   priority: 5
@@ -36,7 +51,17 @@
   when:
     command: '^kill\s+(-\S+\s+)*(?P<name>[A-Za-z]\S*)\s*$'
   hint: >-
-    `kill` takes a pid, not a name. `pkill {name}` signals by name, and `pgrep -a {name}` shows what would be hit first.
+    `kill` takes a pid number, not a program name, so `{name}` could not be used. `pgrep -a {name}` shows the matching pids, and `pkill {name}` signals them by name.
+  why: |
+    `kill` is a thin wrapper around the kernel's signal call, which addresses processes by
+    number. Given the word `{name}`, the shell's built-in `kill` replies "arguments must be
+    process or job IDs". The tools that map names to numbers are `pgrep`, which prints the
+    pids whose command matches, and `pkill`, which sends the signal to all of them at once.
+    Look first with `pgrep -a`, because a short name can match more than you expect.
+    Ways forward:
+      1. `pgrep -a {name}`                see every process that would be hit
+      2. `pkill {name}`                   send SIGTERM to all of them
+      3. `kill <pid>`                     one process, once you have its number
   man: [kill(1), pkill(1)]
   cooldown: 3600
   priority: 8
@@ -47,7 +72,18 @@
     command: '^(sudo\s+)?(kill|pkill|killall)\s+(-9|-KILL|-s\s+KILL)\b'
     exit: any
   hint: >-
-    SIGKILL cannot be caught, so the process gets no chance to flush or clean up. Plain `kill` sends SIGTERM first; reach for `-9` only when that was ignored.
+    That sent SIGKILL, which the process cannot catch, so it got no chance to save or clean up. Plain `kill` sends SIGTERM, a polite request; reach for `-9` only after that was ignored.
+  why: |
+    SIGKILL is enforced by the kernel, not handled by the program: the process is ended at
+    once, with half-written files, temporary files and lock files left as they were. SIGTERM
+    (the default, number 15) is delivered to the program, which usually saves, closes and
+    exits within a second or two. The habit that keeps data safe is TERM first, wait, then
+    KILL only for a process that ignored the request. Services are better stopped through
+    systemd, which sends TERM and escalates for you.
+    Ways forward:
+      1. `kill <pid>`                     SIGTERM, the polite request, first
+      2. `sleep 5; kill -9 <pid>`         SIGKILL only if it is still there
+      3. `sudo systemctl stop unit`       for a service, let systemd do the escalation
   man: [signal(7), kill(1)]
   cooldown: 86400
   priority: 5
@@ -58,7 +94,17 @@
     command: '^(sudo\s+)?pkill\s+(-\S+\s+)*(?P<name>\S+)\s*$'
     exit: [1]
   hint: >-
-    Nothing matched `{name}`. `pgrep -af {name}` matches the whole command line, and `ps aux | grep {name}` shows the exact process name.
+    `pkill` found no process named `{name}`, so nothing was signalled. `pgrep -af {name}` matches the whole command line, and `ps aux | grep {name}` shows the exact process name.
+  why: |
+    `pkill` matches its pattern against the process name, which is the first fifteen
+    characters of the executable's file name, not the command you typed or the window
+    title. A Flatpak app, a script run through an interpreter, or a long name can all have
+    a process name you did not expect. Exit 1 means no match, and no signal was sent, so
+    nothing changed on the system. Find the real name first, then signal it.
+    Ways forward:
+      1. `pgrep -af {name}`               match the full command line, print it
+      2. `ps aux | grep -i {name}`        see the exact process name and owner
+      3. `pkill -f {name}`                signal by full command line once you are sure
   man: [pgrep(1), ps(1)]
   cooldown: 3600
 - id: proc-killall-missing
@@ -69,7 +115,17 @@
     exit: [127]
     probe: no_command:killall
   hint: >-
-    `killall` comes from psmisc, which is not in this image. `pkill name` does the same job and ships with procps.
+    `killall` is not in the Pridwen image; it comes from the psmisc package, which is not shipped. `pkill name` does the same job and is already here, from procps.
+  why: |
+    Exit 127 is the shell saying no program called `killall` exists on your PATH. The base
+    of Pridwen is a read-only image that contains only what was built into it, and psmisc,
+    the package that provides `killall`, is not part of it. `pkill`, from procps, sends a
+    signal to every process whose name matches, which is exactly what `killall` did, and
+    `pgrep -a` shows what would be hit first. There is no need to layer anything.
+    Ways forward:
+      1. `pgrep -a name`                  see the matching processes and their pids
+      2. `pkill name`                     send SIGTERM to all of them
+      3. `pridwen explain kill`           the signal flags, which pkill shares
   man: [pkill(1)]
   cooldown: 86400
   priority: 10
@@ -81,7 +137,19 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is not in the image. `top` is, or layer it with `rpm-ostree install {cmd}` (active after reboot), or run it from a Distrobox.
+    `{cmd}` is not in the Pridwen image, so the shell could not find it. `top` is here and does the same job; or run `{cmd}` from a Distrobox, or layer it with `rpm-ostree install {cmd}` for after a reboot.
+  why: |
+    Exit 127 means no executable called `{cmd}` is on your PATH. Pridwen's base is a
+    read-only container image, and only the tools built into that image are present;
+    `{cmd}` is a nicer process viewer, but `top` ships and answers the same questions
+    (press `M` to sort by memory, `P` by CPU, `q` to quit). If you want `{cmd}` itself,
+    a Distrobox gives you a writable Fedora where `dnf install` works, and layering with
+    `rpm-ostree` puts it on the host at the next boot, at the cost of slower updates.
+    Ways forward:
+      1. `top`                            the same view, already installed
+      2. `distrobox enter dev`            then `sudo dnf install {cmd}` inside the box
+      3. `sudo rpm-ostree install {cmd}`  layered on the host, active after a reboot
+      4. `pridwen learn pkg-01`           why software lives in layers here
   man: [top(1), rpm-ostree(1)]
   cooldown: 86400
   priority: 10
@@ -93,7 +161,17 @@
     exit: [127]
     probe: no_command:lsof
   hint: >-
-    `lsof` is not in the image. For ports use `ss -tlnp`; for who has a file open, `fuser -v file`; or `rpm-ostree install lsof`.
+    `lsof` is not in the Pridwen image. For listening ports use `ss -tlnp`; for who has a file open use `fuser -v file`; or layer it with `rpm-ostree install lsof` for after a reboot.
+  why: |
+    Exit 127 means the shell found no `lsof` on your PATH; the read-only base image does
+    not include it. The two questions people usually ask `lsof` have built-in answers:
+    `ss` lists sockets and, with `-p`, the process holding each one, and `fuser` reports
+    the processes that have a file or directory open. Both ship with Pridwen. Layering
+    `lsof` works but slows every update, so try the built-ins first.
+    Ways forward:
+      1. `ss -tlnp`                       TCP listeners with the owning process
+      2. `fuser -v /path/to/file`         who has that file open
+      3. `sudo rpm-ostree install lsof`   on the host after a reboot, if you need the real thing
   man: [ss(8), fuser(1)]
   cooldown: 86400
   priority: 10
@@ -103,7 +181,17 @@
   when:
     command: '^(fg|bg)\b'
   hint: >-
-    There is no stopped or background job in this shell. `jobs` lists them; Ctrl-Z stops the foreground process so `bg` can resume it in the background.
+    This shell has no stopped or background job to bring back, so `fg`/`bg` had nothing to act on. `jobs` lists them; Ctrl-Z stops the foreground command so `bg` can resume it in the background.
+  why: |
+    Jobs belong to the shell that started them. `fg` and `bg` look only at the job list of
+    the shell you typed them in, and it is empty: either no command was started with `&`
+    or stopped with Ctrl-Z here, or the job was started in another terminal tab, or it has
+    already finished. Nothing is wrong; the shell is reporting an empty list. Start a
+    job in this shell, or manage it from the tab that owns it.
+    Ways forward:
+      1. `jobs`                           list this shell's jobs and their states
+      2. `sleep 300 &`                    start a background job to practise with
+      3. `pgrep -a name`                  find a process that belongs to another shell
   man: [bash(1)]
   cooldown: 3600
 - id: proc-strace-missing
@@ -114,7 +202,18 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is a debugging tool that is not in the base image. Run it from a Distrobox with the program you are tracing, or layer it with `rpm-ostree install {cmd}`.
+    `{cmd}` is a debugging tool that is not in the Pridwen base image. Run it from a Distrobox with the program you are tracing, or layer it with `rpm-ostree install {cmd}` for after a reboot.
+  why: |
+    Exit 127 means no `{cmd}` on your PATH. Tracing tools like `{cmd}` are left out of the
+    read-only base image because most people never need them, and keeping the image small
+    keeps updates fast and the attack surface low. A Distrobox is the natural home for them:
+    it is a writable Fedora sharing your home directory, so you can install the tracer and
+    the program under test together. Layering on the host works too, but every layered
+    package is re-applied on each update.
+    Ways forward:
+      1. `distrobox enter dev`            then `sudo dnf install {cmd}` inside
+      2. `sudo rpm-ostree install {cmd}`  on the host, active after a reboot
+      3. `journalctl -b -p err`           often answers "why did it fail" without a tracer
   man: [distrobox(1), rpm-ostree(1)]
   cooldown: 86400
   priority: 10

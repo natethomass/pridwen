@@ -9,7 +9,18 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    Ansible is not in the base image. `pipx install ansible-core` gives you the command in its own environment, or run it from a Distrobox aimed at your Range hosts.
+    `{cmd}` is not in the image (exit 127). Install `ansible-core` inside a Distrobox with `sudo dnf install ansible-core`, or with `pipx install ansible-core`, and aim it at your Range hosts.
+  why: |
+    The shell searched PATH for `{cmd}` and found nothing. Ansible is a Python tool with
+    many dependencies, and Pridwen keeps the host image small and read-only, so it
+    belongs in its own environment: a Distrobox, where the box's `dnf` installs it and
+    your home, inventory and SSH keys are shared, or a `pipx` environment on the host.
+    Either way the targets are the Range machines, reached over SSH; the desktop itself
+    is managed by its image, not by a playbook.
+    Ways forward:
+      1. `distrobox enter dev`                   into your box (create one first if needed)
+      2. `sudo dnf install -y ansible-core`      inside the box
+      3. `pipx install ansible-core`             the isolated-environment route on the host
   man: [pipx(1), ansible(1)]
   cooldown: 86400
   priority: 10
@@ -20,7 +31,18 @@
     command: '^ansible(-playbook)?\s+.*(-i\s+localhost|--connection[= ]local)'
     probe: ostree
   hint: >-
-    Running Ansible against this immutable host will fail on any task that writes to `/usr`. Point it at a Range host or a Distrobox; Pridwen itself changes through its image, not a playbook.
+    Ansible aimed at this immutable host will fail on any task that writes to `/usr`; the desktop changes through its image, not a playbook. Point it at a Range host or a Distrobox instead.
+  why: |
+    You ran Ansible against localhost, which here is the Pridwen desktop. Its `/usr` is a
+    read-only image replaced whole by `bootc upgrade`, so a `dnf` task or anything that
+    writes under `/usr` fails with a read-only filesystem error, and that is the design
+    working rather than a bug: the host has one source of truth, its image, and rollback
+    depends on nobody editing it in place. Ansible's job on Pridwen is the Range, the
+    Rocky 9 lab hosts you own, where it can install, configure and be rerun safely.
+    Ways forward:
+      1. `ansible all -i inventory -m ping`          reach the Range hosts instead
+      2. `bootc status`                              how this host is actually managed
+      3. `pridwen learn ansible-01`                  what Ansible is for here
   man: [ansible(1), bootc(8)]
   cooldown: 86400
   priority: 15
@@ -31,14 +53,17 @@
     command: '^ansible(-playbook)?\s+'
     exit: [4]
   hint: >-
-    Exit 4 means hosts were unreachable, usually SSH: the key is not installed on the target or the host name is not in your inventory. `ansible all -m ping -i inventory` tests reachability alone.
+    Exit 4 means hosts were unreachable, almost always SSH: your key is not on the target or the name is wrong in the inventory. `ansible all -m ping -i inventory` tests reachability by itself.
   why: |
-    Ansible connects over SSH and needs three things lined up: a host in the inventory, a
-    username, and a key the target accepts. Exit 4 means it reached none of the hosts it
-    was asked to.
+    Ansible connects over SSH and needs three things lined up: a host in the inventory,
+    a login name the target accepts, and a key installed there. Exit status 4 means at
+    least one host answered "UNREACHABLE", so none of the tasks for it ran. The message
+    inside usually quotes SSH, such as "Permission denied (publickey)" for a missing key
+    or "Could not resolve hostname" for a wrong name. Fix it the SSH way first, by hand,
+    then prove it with the `ping` module before trying the playbook again.
     Ways forward:
       1. `ansible all -m ping -i inventory`             prove connectivity first
-      2. `ssh-copy-id user@web-01`                       install your key on the target
+      2. `ssh-copy-id {user}@web-01`                     install your key on the target
       3. `ansible-playbook -i inventory site.yml --check` dry run once it connects
   man: [ansible(1), ansible-inventory(1)]
   cooldown: 3600
@@ -50,7 +75,18 @@
     command: '^ansible-playbook\s+'
     exit: [1]
   hint: >-
-    Exit 1 is often a YAML or task error before anything ran. `ansible-playbook --syntax-check site.yml` catches it, and `--check --diff` shows what a run would change.
+    Exit 1 is often a YAML or task error caught before anything ran. `ansible-playbook --syntax-check site.yml` finds it and names the line; `--check --diff` then previews what a run would change.
+  why: |
+    `ansible-playbook` returns 1 when it stopped with an error: a playbook it could not
+    parse, an unknown module, a missing parameter, or a task that failed on a host.
+    The message above the recap names the file, line and column for a YAML mistake,
+    which is nearly always indentation or a missing space after a colon. Running the
+    syntax check first costs seconds and never touches a host; check mode then shows
+    what the run would do so the first real run holds no surprises.
+    Ways forward:
+      1. `ansible-playbook --syntax-check site.yml`             parse without connecting
+      2. `ansible-playbook -i inventory site.yml --check --diff` preview the changes
+      3. `pridwen learn ansible-02`                              the playbook shape, line by line
   man: [ansible-playbook(1)]
   cooldown: 3600
   priority: 5
@@ -61,7 +97,18 @@
     command: '^ansible(-playbook)?\s+.*(-K|--ask-become-pass|--become)\b'
     exit: any
   hint: >-
-    `--become` runs tasks through sudo on the target, and `-K` prompts for that sudo password once. The target user still needs to be in wheel there, just as on Pridwen.
+    `--become` runs tasks through sudo on the target and `-K` asks for that sudo password once. The target user still has to be in wheel on the Range host, exactly the rule Pridwen applies here.
+  why: |
+    Ansible logs in as an ordinary user and, with become on, wraps each task in `sudo`
+    on the target, because installing a package or editing `/etc` needs root there just
+    as it does here. The target's sudo rules still apply: the user must be in `wheel`,
+    and if sudo wants a password, `-K` (capital) prompts for it once before the run.
+    "Missing sudo password" means become was needed and no password was offered. In a
+    playbook, `become: true` on the play does the same for every task.
+    Ways forward:
+      1. `ansible web-01 -i inventory -m ping -b -K`     test become alone
+      2. `ssh {user}@web-01 sudo -v`                     check sudo works by hand on the target
+      3. `pridwen learn ansible-01`                      become, explained
   man: [ansible-playbook(1), sudoers(5)]
   cooldown: 86400
   priority: -5

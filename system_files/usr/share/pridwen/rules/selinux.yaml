@@ -8,17 +8,20 @@
     command: '^(sudo\s+)?setenforce\s+(0|[Pp]ermissive)\b'
     exit: any
   hint: >-
-    Permissive mode turns every denial into a log line and lets the action through, for the whole system, until reboot. Find the one denial instead: `sudo ausearch -m avc -ts recent`, then `pridwen why`.
+    That switches the whole system to permissive: every denial is logged and let through, for every process, until reboot. Find the one denial instead with `sudo ausearch -m avc -ts recent`, then `pridwen why selinux` translates it.
   why: |
-    SELinux enforcing is part of the Pridwen baseline. A denial means one process touched
-    one thing the policy did not expect; the fix is a label, a boolean, or a small policy
-    module, not switching the guard off for everything. Permissive mode is a diagnostic,
-    and only a short one.
+    `setenforce 0` drops SELinux to permissive mode. The kernel keeps writing denial
+    records but stops refusing anything, for every process on the machine, until the
+    next boot or `setenforce 1`. Pridwen runs enforcing as part of its baseline because a
+    denial is always narrow: one process type wanted one permission on one object type.
+    The fix for that is a label, a boolean, or a small policy module, never switching the
+    guard off for everything to unblock one thing. Permissive is a diagnostic, and only
+    a short one, used when you cannot tell which of several denials matters.
     Ways forward:
       1. `sudo ausearch -m avc -ts recent`         the denials from the last ten minutes
-      2. `pridwen why`                              translated into plain English
-      3. `sudo restorecon -Rv path`                 if the label is wrong
-      4. `sudo setsebool -P boolean on`             if a boolean covers it
+      2. `pridwen why selinux`                      the newest denial in plain English
+      3. `sudo restorecon -Rv path`                 if the file's label is wrong for its path
+      4. `sudo setsebool -P boolean on`             if a policy switch covers the behaviour
       5. `sudo setenforce 1`                        back to enforcing if you did switch
   man: [setenforce(8), ausearch(8), restorecon(8), setsebool(8)]
   cooldown: 3600
@@ -30,7 +33,18 @@
     command: '^setenforce\b'
     not_sudo: true
   hint: >-
-    Changing the enforcing mode needs root, and on Pridwen it should stay at 1. `getenforce` reads the mode without root.
+    Changing the SELinux mode is a root-only action, so that failed before it did anything. On Pridwen the mode should stay at 1 anyway; `getenforce` reads it without root.
+  why: |
+    `setenforce` writes the mode into `/sys/fs/selinux/enforce`, and only root may write
+    there, so without `sudo` the command fails with a permission error before touching
+    anything. That is deliberate: the SELinux mode is a system-wide security setting and
+    an ordinary user must not be able to lower it. On Pridwen the answer should stay at
+    `Enforcing`; if you were reaching for `setenforce 0` to get past a denial, read the
+    denial instead, it names the one thing to fix. Reading the mode needs no privilege.
+    Ways forward:
+      1. `getenforce`                               read the current mode, no root needed
+      2. `sestatus`                                 mode, policy, and the config-file mode
+      3. `pridwen why selinux`                      if a denial is what sent you here
   man: [setenforce(8), getenforce(8)]
   cooldown: 3600
   priority: 5
@@ -41,7 +55,20 @@
     command: 'SELINUX=(disabled|permissive)'
     exit: any
   hint: >-
-    That line in `/etc/selinux/config` turns SELinux off at the next boot and, if disabled, drops labels so re-enabling means a full relabel. Leave it `enforcing` and fix the one denial.
+    That line in `/etc/selinux/config` changes the mode at the next boot, and `disabled` also stops labelling files, so re-enabling later means a full relabel. Leave it `enforcing` and fix the one denial.
+  why: |
+    `/etc/selinux/config` sets the mode SELinux starts in at boot. `permissive` there
+    means every boot comes up with the guard logging but not refusing; `disabled` means
+    no policy is loaded at all and new files are written without labels, so turning it
+    back on later forces a relabel of the whole filesystem on the next boot. Pridwen
+    ships `enforcing` and keeps `/etc` across upgrades, so an edit here would follow you
+    forever. Whatever was being blocked is one denial with one fix, and it is smaller
+    than this.
+    Ways forward:
+      1. `sudo ausearch -m avc -ts today`          every denial since midnight
+      2. `pridwen why selinux`                      the newest one, translated
+      3. `grep ^SELINUX= /etc/selinux/config`       confirm it still says enforcing
+      4. `pridwen learn selinux-03`                 the three fixes that keep enforcing on
   man: [selinux_config(5), selinux(8)]
   cooldown: 3600
   priority: 50
@@ -52,7 +79,19 @@
     command: '^(ausearch|aureport|auditctl)\b'
     not_sudo: true
   hint: >-
-    The audit log in `/var/log/audit/` is root-only: `sudo {cmd} ...`. For SELinux denials, `sudo ausearch -m avc -ts recent`.
+    The audit log in `/var/log/audit/` is readable only by root, so `{cmd}` could not open it. Put `sudo` in front; for SELinux denials, `sudo ausearch -m avc -ts recent`.
+  why: |
+    `{cmd}` reads `/var/log/audit/audit.log`, and that file is owned by root with no
+    access for anyone else. It is the record of every sudo command, login, and SELinux
+    denial, exactly the file an intruder would most like to read or edit, so the audit
+    daemon keeps it root-only and Pridwen does not loosen that. The tools are meant to be
+    run through `sudo`, which itself lands as a `USER_CMD` record in the same log. For
+    a quick look at SELinux denials without root, `pridwen why selinux` reads the copies
+    that reach the journal, which `wheel` members can see.
+    Ways forward:
+      1. `sudo {cmd} -ts today`                      the same query, as root
+      2. `sudo ausearch -m avc -ts recent`          SELinux denials from the last ten minutes
+      3. `pridwen why selinux`                      the newest denial, no sudo needed
   man: [ausearch(8), auditd(8)]
   cooldown: 3600
   priority: 5
@@ -63,7 +102,20 @@
     command: '^sudo\s+ausearch\b'
     exit: [1]
   hint: >-
-    Exit 1 from `ausearch` means no matching records, which is good news. Widen the window with `-ts today`, or check `-m avc` was spelled as an uppercase-insensitive type.
+    Exit 1 from `ausearch` means no record matched, which is usually good news: nothing was denied in that window. Widen it with `-ts today` or `-ts boot` if you expected one.
+  why: |
+    `ausearch` returns 1 and prints `<no matches>` when nothing in the audit log fits
+    the filters you gave it. That is not a failure of the tool; it is the answer "no such
+    event". With `-ts recent` the window is only the last ten minutes, so a denial from
+    earlier this morning is outside it. If you are hunting an SELinux denial that you
+    are sure happened, some denials are silenced by `dontaudit` rules in the policy and
+    never reach the log until those rules are switched off. `pridwen why selinux` looks
+    at the same records through the journal and will say the same thing if it finds none.
+    Ways forward:
+      1. `sudo ausearch -m avc -ts today`          since midnight instead of ten minutes
+      2. `sudo ausearch -m avc -ts boot`           since this boot
+      3. `sudo semodule -DB`                       show silenced denials (`sudo semodule -B` to hide again)
+      4. `pridwen why selinux`                     the newest denial the journal has
   man: [ausearch(8)]
   cooldown: 3600
   priority: 5
@@ -74,7 +126,18 @@
     command: '^restorecon\b'
     not_sudo: true
   hint: >-
-    You can relabel your own files, but anything under `/etc`, `/var` or another user's home needs `sudo restorecon -Rv path`.
+    You may relabel files you own, but that path belongs to someone else, so `restorecon` could not change its label. `sudo restorecon -Rv path` relabels it as root and prints each change.
+  why: |
+    `restorecon` sets a file's SELinux label back to what the policy's file-context rules
+    say it should be. Changing a label counts as changing the file, so the same ownership
+    rules apply as for `chmod`: you may relabel your own files, and anything under `/etc`,
+    `/var`, `/srv`, or another user's home needs root. That is why the command failed
+    part way or printed a permission error. The `-R` flag recurses into directories and
+    `-v` prints every label it changed, which is how you see what was wrong.
+    Ways forward:
+      1. `sudo restorecon -Rv path`                 relabel as root, printing each change
+      2. `matchpathcon path`                        what the label should be, no root needed
+      3. `ls -Z path`                               what the label is now
   man: [restorecon(8)]
   cooldown: 3600
   priority: 5
@@ -85,7 +148,21 @@
     command: '^(sudo\s+)?chcon\b'
     exit: any
   hint: >-
-    `chcon` sets a label that the next `restorecon` or relabel will undo. `sudo semanage fcontext -a -t type 'path(/.*)?'` then `restorecon -Rv path` makes it permanent.
+    `chcon` changed the label on the file but not the rule behind it, so the next `restorecon` or relabel puts the old label back. `sudo semanage fcontext -a -t type 'path(/.*)?'` then `sudo restorecon -Rv path` makes it stick.
+  why: |
+    `chcon` writes a label directly onto a file. The policy keeps a separate set of
+    file-context rules saying what every path should carry, and `chcon` does not touch
+    those, so the first `restorecon`, or the full relabel that can follow an upgrade,
+    silently resets the file and the denial comes back weeks later with no obvious cause.
+    Pridwen upgrades on every `bootc upgrade`, so a label that only lives on the file is
+    a label that will not last. The permanent way is to record the rule with `semanage
+    fcontext` and then apply it with `restorecon`. `chcon` is fine for a one-minute
+    experiment, which is what the lesson uses it for.
+    Ways forward:
+      1. `sudo semanage fcontext -a -t type 'path(/.*)?'`   record the rule for the path and everything under it
+      2. `sudo restorecon -Rv path`                            apply it, printing each change
+      3. `sudo semanage fcontext -l | grep path`               list the rule back
+      4. `pridwen explain chcon`                               what the flags you used mean
   man: [chcon(1), semanage-fcontext(8), restorecon(8)]
   cooldown: 86400
   priority: 10
@@ -97,7 +174,22 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` comes from policycoreutils-python-utils (or setroubleshoot), which the base image does not carry. `rpm-ostree install policycoreutils-python-utils` layers it; until then `pridwen why` translates the last denial.
+    `{cmd}` is not on the host: it comes from policycoreutils-python-utils (or setroubleshoot), which the base image does not carry. `sudo rpm-ostree install policycoreutils-python-utils` layers it; until then `pridwen why selinux` translates the last denial.
+  why: |
+    Exit 127 is bash saying it found no program named `{cmd}`. Pridwen is an immutable
+    image and `/usr` is read-only, so the fix is not `dnf install`. The package that
+    provides `semanage` and the audit2 tools is `policycoreutils-python-utils`, and it is
+    left out of the base image to keep it small. `rpm-ostree install` layers a package on
+    top of the image and it appears after the next reboot; layering slows every update
+    slightly, so do it only for tools you use on the host itself. On a Range host,
+    ordinary `dnf install` works. For most denials you do not need it: `restorecon`,
+    `getsebool` and `setsebool` are present, and `pridwen why selinux` tells you which fix
+    applies.
+    Ways forward:
+      1. `sudo rpm-ostree install policycoreutils-python-utils`   layer it; reboot to use it
+      2. `pridwen why selinux`                                    the last denial and its fix
+      3. `sudo restorecon -Rv path`                               the fix that needs no extra package
+      4. `matchpathcon path`                                      what the label should be
   man: [semanage(8), rpm-ostree(1)]
   cooldown: 86400
   priority: 10
@@ -108,7 +200,19 @@
     command: '^setsebool\b'
     not_sudo: true
   hint: >-
-    Booleans are policy switches and need root to flip: `sudo setsebool -P name on`. `getsebool -a | grep name` reads them without root.
+    Booleans are switches inside the policy and flipping one needs root, so that failed before changing anything. `sudo setsebool -P name on` sets it; `getsebool -a | grep name` reads it without root.
+  why: |
+    A boolean is a named on/off switch the policy provides for optional behaviour, like
+    letting the web server open network connections. Flipping one changes what every
+    process of that type may do, so the kernel only accepts the change from root, and
+    `setsebool` without `sudo` fails with a permission error. Reading booleans is
+    harmless and needs nothing. The `-P` flag, persistent, writes the new value into the
+    policy store so it survives a reboot; without it the boolean resets at the next boot,
+    which is fine for a test and wrong for a fix.
+    Ways forward:
+      1. `getsebool -a | grep name`                 read the current value, no root needed
+      2. `sudo setsebool -P name on`                flip it and keep it across reboots
+      3. `sudo setsebool name on`                   flip it until the next boot only
   man: [setsebool(8), getsebool(8)]
   cooldown: 3600
   priority: 5
@@ -119,7 +223,18 @@
     command: '^sudo\s+setsebool\s+(?!-P)'
     exit: [0]
   hint: >-
-    Without `-P` that boolean resets at the next boot. Add `-P` once you have confirmed it fixes the denial.
+    That boolean is on now but resets at the next boot because `-P` was not given. Once you have confirmed it fixes the denial, run it again with `-P` so it persists.
+  why: |
+    `setsebool` without `-P` changes the boolean in the running kernel only. The
+    persistent copy in the policy store is untouched, so at the next boot the old value
+    loads again and the denial you just fixed returns. That two-step design is
+    intentional: you can test a boolean at runtime, confirm the denial stops, and only
+    then commit it, so a wrong guess does not follow the machine forever. `-P` stands for
+    persistent and writes the value into the policy store, which takes a few seconds.
+    Ways forward:
+      1. `sudo setsebool -P name on`                make the change survive reboots
+      2. `getsebool name`                           confirm the current value
+      3. `sudo ausearch -m avc -ts recent`          check the denial is gone
   man: [setsebool(8)]
   cooldown: 86400
   priority: -3
@@ -130,7 +245,20 @@
     command: '^(sudo\s+)?ln\s+-s\s+.*/home/\S+\s+/var/www'
     exit: any
   hint: >-
-    Files under `/home` carry `user_home_t`, which httpd may not read even through a symlink. Copy them under `/var/www` and `restorecon`, or label the directory with `semanage fcontext`.
+    Files under `/home` carry the `user_home_t` label, which httpd may not read even through a symlink, so that link will produce a denial. Copy the files under `/var/www` and `restorecon` them, or label the directory with `semanage fcontext`.
+  why: |
+    SELinux checks the label on the real file, not on the link, and everything under
+    `/home` is labelled `user_home_t`. The web server runs as `httpd_t`, and the policy
+    gives it no read on home-directory content, so the symlink resolves and then the
+    kernel refuses the read with an AVC denial. That rule exists so a compromised web
+    server cannot read your documents, which is a good rule to keep. Web content belongs
+    where the policy expects it, `/var/www`, where new files are labelled
+    `httpd_sys_content_t` automatically, or in a directory you have told the policy about.
+    Ways forward:
+      1. `sudo cp -r {home}/site/. /var/www/html/ && sudo restorecon -Rv /var/www/html`   move the content and label it
+      2. `sudo semanage fcontext -a -t httpd_sys_content_t '/srv/web(/.*)?'`             or declare a new content directory
+      3. `sudo restorecon -Rv /srv/web`                                                    then apply the label
+      4. `pridwen why selinux`                                                             read the denial it caused
   man: [httpd_selinux(8), semanage-fcontext(8)]
   cooldown: 86400
   priority: 10

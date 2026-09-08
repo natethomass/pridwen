@@ -6,49 +6,105 @@ required: true
 minutes: 10
 target: host
 brief: |
-  A terminal tab you closed an hour ago is still using the CPU, and nothing on
-  the screen tells you what it is. That is the everyday shape of a process
+  A terminal tab you closed an hour ago is still using the CPU, and nothing
+  on the screen tells you what it is. That is the everyday shape of a process
   problem: something is running, you did not start it on purpose this time,
-  and you need to find it and end it without rebooting.
+  and you need to find it and end it without rebooting. A process is one
+  running program; the kernel gives each a number, the pid (process id), and
+  keeps a list you can read with `ps` or search with `pgrep`. Every process
+  except the first was started by another one, and the first, pid 1, is the
+  ancestor of everything: on Pridwen it is systemd.
 
-  Make one on purpose so you can practise. Start a `sleep` that would run for
-  over an hour, put it in the background so you keep your prompt, and then find
-  it the way you would find a stranger: by name, without guessing. Note its
-  process id. While you are looking, find out what process 1 is called, since
-  everything else on the machine descends from it, and learn the number of the
-  polite signal, the one that asks a program to finish rather than pulling the
-  plug. Then use it, and confirm the sleep is gone.
+  Make a runaway on purpose so you can practise. `sleep N` is a program that
+  does nothing for N seconds and then exits, which makes it a perfect
+  stand-in for a stuck job. Start one that would run for over an hour, put
+  it in the background so you keep your prompt (an `&` at the end of a
+  command line does that), and then find it the way you would find a
+  stranger: by name, without guessing. Note its pid. While you are looking,
+  find out what pid 1 is called, and learn the number of the polite signal.
+  A signal is a short message the kernel delivers to a process: `TERM`
+  (terminate) asks a program to finish and tidy up, while `KILL` pulls the
+  plug with no chance to save anything. `kill` sends signals, and despite its
+  name it sends `TERM` unless you say otherwise. Use it, and confirm the
+  sleep is gone.
+
+  On a job this is how you deal with a hung backup, a runaway browser tab or
+  a script in a loop, without taking the whole machine down with it. Done
+  looks like three answer files (the sleep's pid, the name of pid 1, the
+  number of TERM) and no `sleep 4242` left running. The checker reads the
+  three files and runs `pgrep -f 'sleep 4242'` itself, expecting it to find
+  nothing and exit with status 1.
 steps:
-  - Start `sleep 4242` in the background so the prompt comes back.
-  - Find its process id without guessing and write it in `~/pridwen/answers/sleep-pid.txt`.
-  - Find the name of the process with pid 1 and write it in `~/pridwen/answers/pid1.txt`.
-  - Write the number of the TERM signal in `~/pridwen/answers/signal-term.txt`.
-  - End the sleep politely, then confirm it is gone.
+  - >-
+    Start `sleep 4242` in the background with a trailing `&`. Expect a line
+    like `[1] 12345`, the job number and the pid, and your prompt straight
+    back.
+  - >-
+    Find its pid without guessing, with `pgrep` or `ps`, and write it in
+    `~/pridwen/answers/sleep-pid.txt`. Expect the same number the shell
+    printed.
+  - >-
+    Ask `ps` for the name of pid 1 and write it in
+    `~/pridwen/answers/pid1.txt`. Expect `systemd`.
+  - >-
+    Ask `kill` for the number of the TERM signal and write it in
+    `~/pridwen/answers/signal-term.txt`. Expect a number under 20.
+  - >-
+    End the sleep politely with `kill` and its pid, then search for it again.
+    Expect the shell to report `Terminated` and the search to print nothing.
 hints:
-  - "A trailing `&` backgrounds a command; `jobs`, `pgrep -f 'sleep 4242'` and `ps aux | grep sleep` all find it afterwards."
-  - "`ps -p 1 -o comm=` prints the name of pid 1; `kill -l TERM` prints a signal's number."
-  - "`kill <pid>` sends TERM by default; once it is gone, `pgrep -f 'sleep 4242'` prints nothing and exits 1."
+  - >-
+    A trailing `&` runs a command in the background so the prompt returns at
+    once. `jobs` lists the background jobs of this shell,
+    `pgrep -f 'sleep 4242'` prints the pid of any process whose full command
+    line (`-f`) contains that text, and `ps aux | grep sleep` shows the same
+    thing the long way, with `ps aux` listing every process and `grep`
+    keeping the lines that mention sleep.
+  - >-
+    `ps -p PID -o comm=` shows one process (`-p`) and only its command name
+    (`-o comm`; the `=` blanks the column header so you get the bare name).
+    `kill -l NAME` (`-l` means list) translates a signal name to its number.
+    `kill PID` sends TERM, signal 15, unless you name a different one such as
+    `kill -KILL PID`.
+  - >-
+    `sleep 4242 &`, then
+    `pgrep -f 'sleep 4242' > ~/pridwen/answers/sleep-pid.txt`, then
+    `ps -p 1 -o comm= > ~/pridwen/answers/pid1.txt`, then
+    `kill -l TERM > ~/pridwen/answers/signal-term.txt`, then
+    `kill $(cat ~/pridwen/answers/sleep-pid.txt)`, and finally
+    `pgrep -f 'sleep 4242'; echo $?`, which should print nothing and then 1.
 checks:
   - id: sleep-pid
     type: path_contains
     path: "{home}/pridwen/answers/sleep-pid.txt"
     regex: '^\d+\s*$'
-    fail: "`sleep-pid.txt` should hold the process id, a number on its own line."
+    fail: >-
+      `sleep-pid.txt` is {actual} and does not hold a pid, a whole number on
+      its own line. With the sleep running,
+      `pgrep -f 'sleep 4242' > ~/pridwen/answers/sleep-pid.txt` writes it.
   - id: pid1
     type: path_contains
     path: "{home}/pridwen/answers/pid1.txt"
     regex: 'systemd'
-    fail: "`pid1.txt` should hold the name of pid 1; on Pridwen that is systemd."
+    fail: >-
+      `pid1.txt` is {actual} and does not name pid 1, which on Pridwen is
+      `systemd`. `ps -p 1 -o comm= > ~/pridwen/answers/pid1.txt` writes the
+      name.
   - id: signal-term
     type: path_contains
     path: "{home}/pridwen/answers/signal-term.txt"
     regex: '^15\s*$'
-    fail: "`signal-term.txt` should hold 15, the number of SIGTERM."
+    fail: >-
+      `signal-term.txt` is {actual} and does not hold 15, the number of
+      SIGTERM. `kill -l TERM > ~/pridwen/answers/signal-term.txt` writes it.
   - id: gone
     type: cmd_exit
     cmd: ["pgrep", "-f", "sleep 4242"]
     exit: 1
-    fail: "`pgrep -f 'sleep 4242'` exited {actual}; 1 would mean no such process. It is still running."
+    fail: >-
+      `pgrep -f 'sleep 4242'` exited {actual}; 1 would mean no such process,
+      so the sleep is still running. `kill $(pgrep -f 'sleep 4242')` sends it
+      TERM; then check again.
 cleanup: |
   pkill -f 'sleep 4242' 2>/dev/null || true
   rm -f ~/pridwen/answers/sleep-pid.txt ~/pridwen/answers/pid1.txt ~/pridwen/answers/signal-term.txt

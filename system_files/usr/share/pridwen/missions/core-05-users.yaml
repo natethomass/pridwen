@@ -6,48 +6,112 @@ required: true
 minutes: 10
 target: host
 brief: |
-  Your machine has more accounts than people. The login screen runs as one of
-  them, the Coach's socket belongs to you, and a dozen services each have a
-  name and a number of their own so that a fault in one cannot reach into
-  another. None of this needs root to read, and reading it is how you learn
-  what the numbers mean before you ever create an account yourself.
+  Your machine has more accounts than people. The login screen runs as one
+  of them, the Coach's socket belongs to you, and a dozen services each have
+  a name and a number of their own so that a fault in one cannot reach into
+  another. An account is a line in the account book, `/etc/passwd`: seven
+  fields separated by colons, giving the login name, an `x` where the
+  password used to live (the hashes moved to `/etc/shadow`), the uid (user
+  id, the number the kernel actually uses), the gid (the number of the
+  primary group), a description, the home directory, and the login shell. A
+  group is a named set of accounts, kept in `/etc/group`, and permissions
+  can be given to a group instead of to people one by one.
 
-  Start with `id` and your own line in the account book. Then look up the
-  `gdm` account, the one that draws the login screen, and record its uid. Find
-  out what shell root gets, and count the fields in a passwd line so the format
-  stops looking like noise. Last, confirm you are in the `wheel` group. On
-  Pridwen that membership is what turns your password into `sudo`, and the
-  sudo mission assumes it.
+  None of this needs root to read, and reading it is how you learn what the
+  numbers mean before you ever create an account yourself. `id` prints your
+  own uid, gid and groups; `getent passwd NAME` prints one account's line
+  from wherever accounts are kept, which is why it is preferred over reading
+  `/etc/passwd` by hand. Start with `id` and your own line. Then look up the
+  `gdm` account, the one that draws the login screen, and record its uid.
+  Find out what shell root gets, and count the fields in a passwd line so
+  the format stops looking like noise. Last, confirm you are in the `wheel`
+  group. On Pridwen that membership is what turns your password into
+  `sudo`, and the sudo mission assumes it.
+
+  On a job you will read this file on every machine you inherit, to learn
+  which service accounts exist and who can become root. Done looks like
+  three answer files holding a number, a shell path and a count, plus
+  `wheel` in your group list. The checker reads the three files and runs
+  `id -nG` for your account to see whether `wheel` is among the groups it
+  prints.
 steps:
-  - Run `id` and read your uid, your primary group, and the groups you belong to.
-  - Find the uid of the `gdm` account and write it in `~/pridwen/answers/gdm-uid.txt`.
-  - Find root's login shell and write it in `~/pridwen/answers/root-shell.txt`.
-  - Count the fields in one line of `/etc/passwd` and write the number in `~/pridwen/answers/passwd-fields.txt`.
-  - Confirm you are in the `wheel` group.
+  - >-
+    Run `id` and read your uid, your primary group, and the list of groups
+    you belong to. Expect `uid=1000({user})` or similar, and `wheel`
+    somewhere in the groups.
+  - >-
+    Look up the `gdm` account with `getent` and write only its uid in
+    `~/pridwen/answers/gdm-uid.txt`. Expect a small number.
+  - >-
+    Look up root's line the same way and write only its login shell, the
+    last field, in `~/pridwen/answers/root-shell.txt`. Expect a path ending
+    in `bash`.
+  - >-
+    Count the colon-separated fields in one line of `/etc/passwd` and write
+    the number in `~/pridwen/answers/passwd-fields.txt`. Expect the same
+    count on every line.
+  - >-
+    List your groups by name with `id` and confirm `wheel` is one of them.
+    Expect it to be there if the welcome wizard made you an administrator.
 hints:
-  - "`getent passwd gdm` prints the account's line; the third colon-separated field is the uid."
-  - "Fields in `/etc/passwd` are separated by colons and the last one is the login shell; `getent passwd root` shows root's."
-  - "`id -nG` lists your groups by name. If `wheel` is missing, the welcome wizard did not make you an administrator, and another administrator will have to add you before the sudo mission."
+  - >-
+    `getent passwd gdm` prints the account's line; fields are separated by
+    colons and the third one is the uid. `getent passwd root` shows root's
+    line, and its last field is the login shell. `id -nG` lists your groups
+    by name: `-G` means all groups, `-n` means names instead of numbers.
+  - >-
+    You can write a number by hand with `echo 42 > file`, or let the shell
+    cut the field for you: `cut -d: -f3` splits each line on colons (`-d:`
+    sets the delimiter) and keeps field 3 (`-f3`); `-f7` keeps the seventh.
+    `awk -F: '{print NF}'` prints the number of fields on each line, with
+    `-F:` setting the separator and `NF` meaning "number of fields".
+  - >-
+    `getent passwd gdm | cut -d: -f3 > ~/pridwen/answers/gdm-uid.txt`, then
+    `getent passwd root | cut -d: -f7 > ~/pridwen/answers/root-shell.txt`,
+    then `head -n 1 /etc/passwd | awk -F: '{print NF}' > ~/pridwen/answers/passwd-fields.txt`,
+    then `id -nG | grep -w wheel`.
+  - >-
+    If `wheel` is missing, the welcome wizard did not make you an
+    administrator. Another administrator has to run
+    `sudo usermod -aG wheel {user}` (`-aG` appends a group without removing
+    the others), and you log out and back in before the sudo mission.
 checks:
   - id: gdm-uid
     type: path_contains
     path: "{home}/pridwen/answers/gdm-uid.txt"
     regex: '^42\s*$'
-    fail: "`gdm-uid.txt` should hold gdm's uid, the third colon-separated field of its passwd line."
+    fail: >-
+      `gdm-uid.txt` is {actual} and does not hold gdm's uid on its own line,
+      the third colon-separated field of the line `getent passwd gdm` prints.
+      `getent passwd gdm | cut -d: -f3 > ~/pridwen/answers/gdm-uid.txt`
+      writes it.
   - id: root-shell
     type: path_contains
     path: "{home}/pridwen/answers/root-shell.txt"
     regex: '^/(usr/)?bin/bash\s*$'
-    fail: "`root-shell.txt` should hold root's login shell, the last field of its passwd line."
+    fail: >-
+      `root-shell.txt` is {actual} and does not hold root's login shell, the
+      seventh and last field of its passwd line, which on Pridwen is
+      `/bin/bash`.
+      `getent passwd root | cut -d: -f7 > ~/pridwen/answers/root-shell.txt`
+      writes it.
   - id: passwd-fields
     type: path_contains
     path: "{home}/pridwen/answers/passwd-fields.txt"
     regex: '^7\s*$'
-    fail: "`passwd-fields.txt` should hold the number of colon-separated fields in a passwd line; count the colons and add one."
+    fail: >-
+      `passwd-fields.txt` is {actual} and does not hold the number of
+      colon-separated fields in a passwd line: count the colons and add one.
+      `head -n 1 /etc/passwd | awk -F: '{print NF}' > ~/pridwen/answers/passwd-fields.txt`
+      counts for you.
   - id: wheel
     type: group_member
     user: "{user}"
     group: wheel
-    fail: "Your groups are: {actual}. `wheel` is not among them, so sudo will refuse you; the first account the wizard creates is normally an administrator."
+    fail: >-
+      Your groups are: {actual}. `wheel` is not among them, so `sudo` will
+      refuse you. The first account the welcome wizard creates is normally an
+      administrator; another administrator can run
+      `sudo usermod -aG wheel {user}`, after which you log out and back in.
 cleanup: |
   rm -f ~/pridwen/answers/gdm-uid.txt ~/pridwen/answers/root-shell.txt ~/pridwen/answers/passwd-fields.txt

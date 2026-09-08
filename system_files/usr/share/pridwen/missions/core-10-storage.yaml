@@ -6,46 +6,107 @@ required: true
 minutes: 10
 target: host
 brief: |
-  Every file on this machine sits on a stack you have never looked at: a disk,
-  a partition, an encryption layer that unlocked when you typed your passphrase
-  at boot, and a btrfs filesystem inside it whose subvolumes become `/`,
-  `/home` and `/var`. When a disk fills up or a drive fails, the stack is what
-  you will be reading, so read it now while nothing is wrong.
+  Every file on this machine sits on a stack you have never looked at: a
+  disk, a partition (a slice of the disk with a name like `sda3`), an
+  encryption layer that unlocked when you typed your passphrase at boot, and
+  a btrfs filesystem inside it whose subvolumes become `/`, `/home` and
+  `/var`. A filesystem is the structure that turns raw disk blocks into
+  files and directories; btrfs is the one Pridwen uses, and a subvolume is a
+  separate tree inside one btrfs filesystem that can be mounted on its own.
+  The encryption layer is LUKS: `lsblk` shows the partition's type as
+  `crypto_LUKS` and the unlocked device, named `luks-` and a long id, sits
+  between the partition and the filesystem. Mounting is how a filesystem is
+  attached to a directory, and the mount options are the settings it was
+  attached with.
 
-  Save the block device tree with filesystem details and find the encryption
-  layer. Work out which device and filesystem type back `/`, and save the mount
-  options so you can see the subvolume named there. Then check the free space
-  of `/home` and compare it with `/`: they report the same number, and the
-  reason is a small lesson in how btrfs shares one pool between subvolumes.
+  When a disk fills up or a drive fails, the stack is what you will be
+  reading, so read it now while nothing is wrong. `lsblk` lists block
+  devices (disks and the things layered on them) as a tree. `findmnt`
+  answers questions about mounts: what device is under a directory, what
+  filesystem type it is, what options it was mounted with. `df` (disk free)
+  reports used and free space per filesystem. Save the block device tree
+  with filesystem details and find the encryption layer. Work out which
+  device and filesystem type back `/`, and save the mount options so you can
+  see the subvolume named there. Then check the free space of `/home` and
+  compare it with `/`: they report the same number, and the reason is a
+  small lesson in how btrfs shares one pool between subvolumes.
+
+  On a job "which disk is this on" and "how much room is left" come up
+  before every migration, every backup and every full-disk emergency. Done
+  looks like four answer files. The checker reads them for the word `crypt`
+  or `LUKS`, the word `btrfs`, a `subvol=` option, and the `df` header line
+  that begins `Filesystem`.
 steps:
-  - Save the block device tree with filesystem details in `~/pridwen/answers/lsblk.txt` and find the encryption layer.
-  - Find the device and filesystem type behind `/` and save that line in `~/pridwen/answers/root-fs.txt`.
-  - Save the mount options of `/` in `~/pridwen/answers/root-options.txt` and find the subvolume named there.
-  - Save the free space of `/home`, human-readable, in `~/pridwen/answers/df-home.txt` and compare it with `/`.
+  - >-
+    Print the block device tree with filesystem details using `lsblk` and
+    save it in `~/pridwen/answers/lsblk.txt`. Expect a disk, its partitions,
+    one partition typed `crypto_LUKS`, and a `luks-` device under it holding
+    `btrfs`.
+  - >-
+    Ask `findmnt` for the source device and filesystem type of `/` and save
+    that line in `~/pridwen/answers/root-fs.txt`. Expect a
+    `/dev/mapper/luks-` device and `btrfs`.
+  - >-
+    Ask `findmnt` for the mount options of `/` and save them in
+    `~/pridwen/answers/root-options.txt`. Expect a comma-separated list
+    containing `subvol=`.
+  - >-
+    Print the free space of `/home` with `df` in human-readable units and
+    save it in `~/pridwen/answers/df-home.txt`, then run the same for `/`.
+    Expect the same `Avail` figure on both.
 hints:
-  - "`lsblk -f` adds the filesystem type and UUID to each layer; the `crypt` line is LUKS."
-  - "`findmnt -no SOURCE,FSTYPE /` and `findmnt -no OPTIONS /` print one thing each, with no table around it."
-  - "`df -h /home` and `df -h /` report the same free space because both are subvolumes of one btrfs filesystem."
+  - >-
+    `lsblk -f` (`-f` adds the filesystem type, label and UUID to each layer)
+    shows the stack as a tree; the partition whose FSTYPE is `crypto_LUKS`
+    is the encrypted one, and the `luks-...` line beneath it is the unlocked
+    layer. `findmnt DIR` reports that one mount; `df -h` reports space with
+    `-h` meaning human-readable units like `G` instead of raw kilobytes.
+  - >-
+    `findmnt -no SOURCE,FSTYPE /` prints one line with just those columns:
+    `-n` drops the header, `-o` picks the output columns.
+    `findmnt -no OPTIONS /` prints only the mount options. `df -h /home`
+    reports the filesystem that holds `/home`, header included.
+  - >-
+    `lsblk -f > ~/pridwen/answers/lsblk.txt`, then
+    `findmnt -no SOURCE,FSTYPE / > ~/pridwen/answers/root-fs.txt`, then
+    `findmnt -no OPTIONS / > ~/pridwen/answers/root-options.txt`, then
+    `df -h /home > ~/pridwen/answers/df-home.txt` and `df -h /` to compare.
 checks:
   - id: lsblk
     type: path_contains
     path: "{home}/pridwen/answers/lsblk.txt"
     regex: 'crypt|LUKS'
-    fail: "`lsblk.txt` shows no `crypt` layer. Pridwen installs on LUKS; if this host was installed without encryption, that is worth knowing."
+    fail: >-
+      `lsblk.txt` is {actual} and shows no `crypto_LUKS` or `crypt` layer.
+      `lsblk -f > ~/pridwen/answers/lsblk.txt` saves the tree; Pridwen
+      installs on LUKS, so if the tree really has no encrypted partition,
+      this host was installed without encryption, which is worth knowing.
   - id: root-fs
     type: path_contains
     path: "{home}/pridwen/answers/root-fs.txt"
     regex: 'btrfs'
-    fail: "`root-fs.txt` should name the root filesystem type, which is btrfs on Pridwen."
+    fail: >-
+      `root-fs.txt` is {actual} and does not name the root filesystem type,
+      which is `btrfs` on Pridwen.
+      `findmnt -no SOURCE,FSTYPE / > ~/pridwen/answers/root-fs.txt` writes
+      the device and the type on one line.
   - id: root-options
     type: path_contains
     path: "{home}/pridwen/answers/root-options.txt"
     regex: 'subvol='
-    fail: "`root-options.txt` should contain the mount options of `/`, including `subvol=`."
+    fail: >-
+      `root-options.txt` is {actual} and does not contain `subvol=`, the
+      option that names which btrfs subvolume is mounted as `/`.
+      `findmnt -no OPTIONS / > ~/pridwen/answers/root-options.txt` writes
+      the options.
   - id: df-home
     type: path_contains
     path: "{home}/pridwen/answers/df-home.txt"
     regex: '^Filesystem\s+Size'
-    fail: "`df-home.txt` should be the human-readable `df` table for `/home`, header included."
+    fail: >-
+      `df-home.txt` is {actual} and does not start with the `Filesystem`
+      and `Size` header of a `df -h` table.
+      `df -h /home > ~/pridwen/answers/df-home.txt` saves the table, header
+      included.
 cleanup: |
   rm -f ~/pridwen/answers/lsblk.txt ~/pridwen/answers/root-fs.txt ~/pridwen/answers/root-options.txt ~/pridwen/answers/df-home.txt

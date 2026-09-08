@@ -32,6 +32,23 @@ tracks, and the same SQLite store (`~/.local/share/pridwen/pridwen.db`). The
 
 Tracks report `verified / total` nodes and the next thing to do.
 
+## Over-explain, always
+
+The owner's rule for all learning material (full text in `coach.md`, section
+"Over-explain, always") applies to missions too:
+
+- `brief`: three or four paragraphs. The situation in the learner's world, what
+  they will be able to do afterwards and why it matters on a real job, what
+  "done" looks like, and one sentence on how the check works (what file or
+  state the checker looks at). Define every term the first time.
+- `steps`: what to do, in order, each one saying what result to expect. Steps
+  still do not hand over the exact command (the hints and lesson do), but they
+  name the tool and the thing it acts on.
+- `hints`: at least three, in escalating order: the idea, the shape of the
+  command with its flags explained, then the exact command line to type.
+- `fail`: what the checker found (`{actual}` where it helps), what it expected,
+  and the single command or edit that gets there. Never just "Not yet".
+
 ## Mission schema (`missions/<id>.yaml`)
 
 ```yaml

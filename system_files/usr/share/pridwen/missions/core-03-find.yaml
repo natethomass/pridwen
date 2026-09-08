@@ -6,18 +6,33 @@ required: true
 minutes: 15
 target: host
 brief: |
-  Your home directory is bigger than it should be and you have a feeling it is
-  one file, not a thousand. Press Start and the Academy builds a small archive
-  under `~/pridwen/archive`: notes, a photo directory, and a cache with a
-  handful of binary blobs, one of them much larger than the rest.
+  Your home directory is bigger than it should be and you have a feeling it
+  is one file, not a thousand. Press Start and the Academy builds a small
+  archive under `~/pridwen/archive`: a `notes` directory with markdown notes
+  and one plain-text readme, a `photos` directory, and a `cache` with a
+  handful of binary blobs, one of them much larger than the rest. Markdown
+  is plain text with light formatting marks, and its files end in `.md`; a
+  binary blob is a file made of raw bytes rather than readable text.
 
   This mission is about asking the filesystem questions instead of opening
-  every directory by hand. Find the single largest file and write down its full
-  path. Count the markdown notes, and only the markdown, since a plain text
-  readme sits among them to keep you honest. Then pack the whole archive into a
-  compressed tarball at `~/pridwen/archive.tar.gz` and list what went in
-  without extracting it. Archives are how files travel between machines, and
-  looking inside one before trusting it is a habit worth keeping.
+  every directory by hand. `du` (disk usage) reports how much space each
+  directory and file takes; `find` walks a tree and prints every path that
+  matches the tests you give it, such as a name pattern or a size; `wc -l`
+  counts lines, which turns a list of paths into a number. Find the single
+  largest file and write down its full path. Count the markdown notes, and
+  only the markdown, since the readme sits among them to keep you honest.
+  Then pack the whole archive into a compressed tarball at
+  `~/pridwen/archive.tar.gz` and list what went in without extracting it. A
+  tarball is one file that holds a whole directory tree, made by `tar`; the
+  `.gz` means it was compressed with gzip on the way in.
+
+  On a job "the disk is full" is a weekly ticket, and the fix always starts
+  with these two questions: what is big, and what is here. Archives are how
+  files travel between machines, and looking inside one before trusting it
+  is a habit worth keeping. Done looks like two answer files and one
+  tarball. The checker reads `biggest.txt` for the path of the big blob and
+  `md-count.txt` for the number 4, confirms the tarball exists, and runs
+  `tar` itself to list it and look for `notes/day-1.md` inside.
 setup: |
   rm -rf ~/pridwen/archive ~/pridwen/archive.tar.gz
   mkdir -p ~/pridwen/archive/notes ~/pridwen/archive/cache ~/pridwen/archive/photos/2025 ~/pridwen/answers
@@ -30,35 +45,78 @@ setup: |
   head -c 2048 /dev/zero > photos/2025/hike.jpg
   touch -d '2 years ago' photos/2025/beach.jpg
 steps:
-  - Explore `~/pridwen/archive` and get a feel for its shape.
-  - Find the single largest file under it and write its full path in `~/pridwen/answers/biggest.txt`.
-  - Count the markdown files under the archive and write the number in `~/pridwen/answers/md-count.txt`.
-  - Pack the whole `archive` directory into `~/pridwen/archive.tar.gz`.
-  - List the contents of the tarball without extracting it, to be sure the notes went in.
+  - >-
+    Explore `~/pridwen/archive` with `ls -R` or `find` and get a feel for its
+    shape. Expect four directories and about fourteen files.
+  - >-
+    Rank everything under the archive by size with `du`, or ask `find` for
+    files over a megabyte, and write the largest file's full path in
+    `~/pridwen/answers/biggest.txt`. Expect one path ending in `.bin`.
+  - >-
+    Count the `.md` files under the archive with `find` and `wc`, and write
+    the number in `~/pridwen/answers/md-count.txt`. Expect 4, not 5.
+  - >-
+    Pack the whole `archive` directory into `~/pridwen/archive.tar.gz` with
+    `tar`. Expect a new file next to the directory, only a few kilobytes
+    because the blobs are all zeros and compress well.
+  - >-
+    List the tarball's contents with `tar` without extracting it. Expect
+    paths starting `archive/`, including `archive/notes/day-1.md`.
 hints:
-  - "`du -a ~/pridwen/archive | sort -n | tail` ranks everything by size; `find ~/pridwen/archive -size +1M` asks the question directly."
-  - "`find ~/pridwen/archive -name '*.md' | wc -l` counts matches, one per line."
-  - "`tar -czf ~/pridwen/archive.tar.gz -C ~/pridwen archive` packs it; `tar -tzf ~/pridwen/archive.tar.gz` lists it."
+  - >-
+    `du -a ~/pridwen/archive` lists the size of everything (`-a` means all
+    files, not just directories) in kilobytes; `sort -n` sorts those lines
+    numerically and `tail` shows the last few, so the biggest come last. The
+    very last lines are directories, whose size includes everything inside
+    them; the largest single file is the last line that ends in a file name.
+  - >-
+    `find ~/pridwen/archive -type f -size +1M` asks the question directly:
+    `-type f` means files only, `-size +1M` means larger than one mebibyte.
+    `find ~/pridwen/archive -name '*.md'` prints every path ending in `.md`
+    (quote the pattern so the shell does not expand it first), and piping
+    that into `wc -l` counts the lines. `tar -czf FILE -C DIR NAME` creates
+    (`-c`) a gzip-compressed (`-z`) archive in FILE (`-f`), after changing
+    into DIR (`-C`), of NAME; `tar -tzf FILE` lists (`-t`) what is inside.
+  - >-
+    `find ~/pridwen/archive -type f -size +1M > ~/pridwen/answers/biggest.txt`,
+    then `find ~/pridwen/archive -name '*.md' | wc -l > ~/pridwen/answers/md-count.txt`,
+    then `tar -czf ~/pridwen/archive.tar.gz -C ~/pridwen archive`, then
+    `tar -tzf ~/pridwen/archive.tar.gz`.
 checks:
   - id: biggest
     type: path_contains
     path: "{home}/pridwen/answers/biggest.txt"
     regex: 'archive/cache/blob-7\.bin'
-    fail: "`biggest.txt` should name the largest file by its path; look again at the `cache` directory."
+    fail: >-
+      `biggest.txt` is {actual} and does not name `archive/cache/blob-7.bin`,
+      the one file over a megabyte.
+      `find ~/pridwen/archive -type f -size +1M > ~/pridwen/answers/biggest.txt`
+      writes its full path.
   - id: md-count
     type: path_contains
     path: "{home}/pridwen/answers/md-count.txt"
     regex: '^\s*4\s*$'
-    fail: "`md-count.txt` should hold the number of `.md` files, and `README.txt` is not one of them."
+    fail: >-
+      `md-count.txt` is {actual} and does not hold the number 4 on its own.
+      Only `.md` files count and `README.txt` is not one;
+      `find ~/pridwen/archive -name '*.md' | wc -l > ~/pridwen/answers/md-count.txt`
+      writes the count.
   - id: tarball
     type: path_exists
     path: "{home}/pridwen/archive.tar.gz"
-    fail: "`~/pridwen/archive.tar.gz` does not exist yet."
+    fail: >-
+      `~/pridwen/archive.tar.gz` does not exist yet.
+      `tar -czf ~/pridwen/archive.tar.gz -C ~/pridwen archive` creates it from
+      the `archive` directory.
   - id: tarball-contents
     type: cmd_output
     cmd: ["tar", "-tzf", "{home}/pridwen/archive.tar.gz"]
     regex: 'notes/day-1\.md'
-    fail: "The tarball does not list `notes/day-1.md`; pack the `archive` directory itself, not just part of it."
+    fail: >-
+      `tar -tzf` (first line: {actual}) never lists `notes/day-1.md`, so the
+      tarball was made from part of the archive or from somewhere else.
+      Rebuild it with `tar -czf ~/pridwen/archive.tar.gz -C ~/pridwen archive`
+      so every path inside begins with `archive/`.
 cleanup: |
   rm -rf ~/pridwen/archive ~/pridwen/archive.tar.gz
   rm -f ~/pridwen/answers/biggest.txt ~/pridwen/answers/md-count.txt

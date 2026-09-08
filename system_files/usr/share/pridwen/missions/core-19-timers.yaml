@@ -6,50 +6,125 @@ required: true
 minutes: 15
 target: host
 brief: |
-  The report script from the last mission is only useful if it runs when you
-  are not thinking about it. On Pridwen scheduled work is a systemd timer: a
-  small unit that starts a matching service on a calendar, logs every run, and
-  will tell you when it fires next. There is no cron here, and after this
+  The report script from the last mission is only useful if it runs when
+  you are not thinking about it. On Pridwen scheduled work is a systemd
+  timer: a small unit that starts a matching service on a calendar, logs
+  every run, and will tell you when it fires next. A timer is a unit file
+  ending in `.timer` whose `[Timer]` section says when; by default it
+  activates the service of the same name, so `pridwen-heartbeat.timer`
+  starts `pridwen-heartbeat.service`. The service is where the work is
+  described; the timer is only the clock. There is no cron here, the older
+  scheduler whose jobs ran silently and logged nowhere, and after this
   mission you will not miss it.
 
-  Build a pair. `pridwen-heartbeat.service` appends the current date and time
-  to `~/pridwen/heartbeat.log`. `pridwen-heartbeat.timer` fires it every
-  minute, which is far too often for real work and exactly right for watching
-  it happen. Enable and start the timer, not the service, and confirm it shows
-  up in your timer list with a next run time. Wait for the first line to
-  land, then read the run in the journal, which is the part cron never gave
-  you: every run, with its output, in one place, dated.
+  Build a pair under `~/.config/systemd/user`. `pridwen-heartbeat.service`
+  appends the current date and time to `~/pridwen/heartbeat.log`; because
+  systemd runs the program directly rather than through a shell, a `>>`
+  redirection has to be handed to bash explicitly. `pridwen-heartbeat.timer`
+  fires it every minute, which is far too often for real work and exactly
+  right for watching it happen; `OnCalendar=` takes a calendar expression,
+  and `minutely` is one of the words it understands. Enable and start the
+  timer, not the service, and confirm it shows up in your timer list with a
+  next run time. Wait for the first line to land, then read the run in the
+  journal, which is the part cron never gave you: every run, with its
+  output, in one place, dated.
+
+  On a job, backups, cleanups and reports all live on timers, and "when did
+  it last run and what did it say" is answered by `list-timers` and the
+  journal. Done looks like an enabled, active timer and a log file gaining
+  a line a minute. The checker asks `systemctl --user` whether the timer is
+  enabled and active, runs `list-timers` and looks for it, and reads
+  `heartbeat.log` for a time such as `09:14`.
 steps:
-  - Write `~/.config/systemd/user/pridwen-heartbeat.service` so that it appends the current date and time to `~/pridwen/heartbeat.log`.
-  - Write `~/.config/systemd/user/pridwen-heartbeat.timer` so that it fires every minute and installs under `timers.target`.
-  - Reload, then enable and start the timer, not the service.
-  - Confirm the timer appears in your timer list with a next run time, and wait for the log to gain its first line.
-  - Read the service's last run in your journal.
+  - >-
+    Write `~/.config/systemd/user/pridwen-heartbeat.service` with nano or
+    `printf` so that its `ExecStart=` appends the current date and time to
+    `~/pridwen/heartbeat.log`. Expect a `[Service]` section whose
+    `ExecStart=` hands a `date >>` redirection to bash.
+  - >-
+    Write `~/.config/systemd/user/pridwen-heartbeat.timer` so that it fires
+    every minute and installs under `timers.target`. Expect `[Timer]` with
+    `OnCalendar=` and `[Install]` with `WantedBy=timers.target`.
+  - >-
+    Reload your user systemd with `daemon-reload`, then enable and start the
+    timer, not the service, with `systemctl --user enable --now`. Expect a
+    `Created symlink` line and no error.
+  - >-
+    Confirm the timer appears in `systemctl --user list-timers` with a
+    `NEXT` time, then wait for the log to gain its first line. Expect a row
+    for `pridwen-heartbeat.timer` and, within a minute, one dated line in
+    `~/pridwen/heartbeat.log`.
+  - >-
+    Read the service's last run with `journalctl --user` and the service
+    name. Expect `Starting`, `Finished` and the date line for each run.
 hints:
-  - "The service needs only `[Service]` with `ExecStart=`. systemd does not run a shell for you, so a redirection needs `ExecStart=/usr/bin/bash -c 'date >> %h/pridwen/heartbeat.log'`; `%h` is your home directory."
-  - "`[Timer]` with `OnCalendar=minutely` and `[Install]` with `WantedBy=timers.target`; `OnUnitActiveSec=1min` plus `OnBootSec=30s` is the other way to say every minute."
-  - "`systemctl --user daemon-reload`, `systemctl --user enable --now pridwen-heartbeat.timer`, then `systemctl --user list-timers` and `journalctl --user -u pridwen-heartbeat.service`."
+  - >-
+    The service needs only `[Service]` with `ExecStart=`. systemd does not
+    run a shell for you, so a redirection needs
+    `ExecStart=/usr/bin/bash -c 'date >> %h/pridwen/heartbeat.log'`:
+    `bash -c` runs the quoted text as a command, and `%h` is systemd's
+    shorthand for your home directory. The timer needs `[Timer]` with
+    `OnCalendar=minutely` and `[Install]` with `WantedBy=timers.target`;
+    `OnUnitActiveSec=1min` plus `OnBootSec=30s` is the other way to say
+    every minute.
+  - >-
+    `systemctl --user daemon-reload` after every edit, then
+    `systemctl --user enable --now pridwen-heartbeat.timer` (`--now` starts
+    it as well as enabling it). `systemctl --user list-timers` shows NEXT
+    and LAST for every timer, `journalctl --user -u pridwen-heartbeat.service`
+    shows each run, and `systemctl --user status pridwen-heartbeat.timer`
+    explains a timer that refuses to load. `printf '%s\n' line line line > file`
+    writes a unit file one line per argument.
+  - >-
+    `mkdir -p ~/.config/systemd/user ~/pridwen`, then
+    `printf '%s\n' '[Unit]' 'Description=Heartbeat' '' '[Service]' 'Type=oneshot' "ExecStart=/usr/bin/bash -c 'date >> %h/pridwen/heartbeat.log'" > ~/.config/systemd/user/pridwen-heartbeat.service`,
+    then
+    `printf '%s\n' '[Unit]' 'Description=Heartbeat every minute' '' '[Timer]' 'OnCalendar=minutely' '' '[Install]' 'WantedBy=timers.target' > ~/.config/systemd/user/pridwen-heartbeat.timer`,
+    then `systemctl --user daemon-reload`,
+    `systemctl --user enable --now pridwen-heartbeat.timer`,
+    `systemctl --user list-timers`, and after a minute
+    `cat ~/pridwen/heartbeat.log`.
 checks:
   - id: timer-enabled
     type: unit_enabled
     unit: pridwen-heartbeat.timer
     scope: user
-    fail: "`is-enabled` says {actual}; the timer needs an `[Install]` section and `systemctl --user enable`."
+    fail: >-
+      `systemctl --user is-enabled pridwen-heartbeat.timer` says {actual};
+      it should say `enabled` (`exit 1` means the file was not found). The
+      timer needs an `[Install]` section with `WantedBy=timers.target`, then
+      `systemctl --user daemon-reload` and
+      `systemctl --user enable pridwen-heartbeat.timer`.
   - id: timer-active
     type: unit_active
     unit: pridwen-heartbeat.timer
     scope: user
-    fail: "`is-active` says {actual}; a timer that is enabled but not started only begins at your next login, and one that fails to load says why in `systemctl --user status pridwen-heartbeat.timer`."
+    fail: >-
+      `systemctl --user is-active pridwen-heartbeat.timer` says {actual}; it
+      should say `active`. A timer that is enabled but not started only
+      begins at your next login: `systemctl --user start pridwen-heartbeat.timer`
+      starts it now, and if it fails to load,
+      `systemctl --user status pridwen-heartbeat.timer` says why.
   - id: listed
     type: cmd_output
     cmd: ["systemctl", "--user", "list-timers", "--all", "--no-pager"]
     regex: 'pridwen-heartbeat\.timer'
-    fail: "`list-timers` does not show `pridwen-heartbeat.timer`; if the unit failed to load, `systemctl --user status pridwen-heartbeat.timer` says why."
+    fail: >-
+      `systemctl --user list-timers --all` (first line: {actual}) does not
+      show `pridwen-heartbeat.timer`. If the unit failed to load,
+      `systemctl --user status pridwen-heartbeat.timer` says why; otherwise
+      `systemctl --user daemon-reload` then
+      `systemctl --user enable --now pridwen-heartbeat.timer`.
   - id: log
     type: path_contains
     path: "{home}/pridwen/heartbeat.log"
     regex: '\d{1,2}:\d{2}'
-    fail: "`~/pridwen/heartbeat.log` has no timestamp yet. Wait a minute for the first run, or start the service by hand and read `journalctl --user -u pridwen-heartbeat.service`."
+    fail: >-
+      `~/pridwen/heartbeat.log` is {actual} and holds no time yet. Wait a
+      minute for the first run, or run the service by hand with
+      `systemctl --user start pridwen-heartbeat.service` and read
+      `journalctl --user -u pridwen-heartbeat.service` if no line appears; a
+      wrong `ExecStart=` shows up there.
 cleanup: |
   systemctl --user disable --now pridwen-heartbeat.timer >/dev/null 2>&1 || true
   rm -f ~/.config/systemd/user/pridwen-heartbeat.service ~/.config/systemd/user/pridwen-heartbeat.timer

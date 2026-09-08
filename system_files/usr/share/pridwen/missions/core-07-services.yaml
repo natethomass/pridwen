@@ -7,48 +7,124 @@ minutes: 15
 target: host
 brief: |
   The Coach that has been commenting on your commands is not magic. It is a
-  user service, `pridwend.service`, a small program systemd starts for you when
-  you log in, without root and without anyone else on the machine noticing.
-  Reading how it is described is the fastest way to learn the shape of a unit.
+  user service, `pridwend.service`, a small program that systemd starts for
+  you when you log in, without root and without anyone else on the machine
+  noticing. systemd is the program that starts everything else on a Linux
+  machine (it is pid 1), and a service is one of the things it manages: a
+  program it starts, watches, restarts and logs. A unit is the small text
+  file that describes a service to systemd, and a user unit lives in your
+  own home, under `~/.config/systemd/user`, managed by a second, personal
+  systemd that runs as you. Reading how the Coach's unit is written is the
+  fastest way to learn the shape of one.
 
-  Then write one of your own. `pridwen-hello.service` should run once, log the
-  word `ready`, and still count as active afterwards, which is the pattern for
-  work that finishes but whose state you want to see. Start it and confirm it
-  is active. Enable it and confirm it is enabled. Those are two different
-  questions with two different answers, and the difference explains most of the
-  "it worked until I rebooted" stories you will ever hear. Finish by finding
-  the line it logged in your own journal.
+  Then write one of your own. `pridwen-hello.service` should run once, log
+  the word `ready`, and still count as active afterwards, which is the
+  pattern for work that finishes but whose state you want to see. A unit has
+  three sections: `[Unit]` describes it, `[Service]` says what to run and
+  how, `[Install]` says when it should start on its own. After every edit
+  you tell systemd to reread its files, because it keeps a copy in memory.
+  Start the service and confirm it is active. Enable it and confirm it is
+  enabled. Those are two different questions: active means running now,
+  enabled means it will start by itself at your next login, and the
+  difference explains most of the "it worked until I rebooted" stories you
+  will ever hear. Finish by finding the line it logged in your journal, the
+  log systemd keeps for you.
+
+  On a job nearly everything a server does is a service, and the day you are
+  asked "why did it not come back after the reboot" you will already know
+  the answer is `enable`. Done looks like a unit file in place, `active` and
+  `enabled` from `systemctl --user`, and `ready` in the journal. The checker
+  looks for the file, asks `systemctl --user is-active` and `is-enabled`,
+  and searches your user journal for the unit's output.
 steps:
-  - Read how the Coach's daemon unit is described.
-  - Write `~/.config/systemd/user/pridwen-hello.service` so that it prints or logs the word `ready` once and stays active after the program has exited.
-  - Tell systemd to read the new file, then start the service and confirm it is active.
-  - Enable it so it comes back at your next login, and confirm it is enabled.
-  - Find the line it logged in your user journal.
+  - >-
+    Print the Coach's daemon unit with `systemctl --user cat` and read its
+    three sections. Expect `[Unit]`, `[Service]` with an `ExecStart=` line,
+    and `[Install]`.
+  - >-
+    Write `~/.config/systemd/user/pridwen-hello.service` so that it prints or
+    logs the word `ready` once and stays active after the program has
+    exited. Expect a file with `Type=oneshot` and `RemainAfterExit=yes` in
+    its `[Service]` section.
+  - >-
+    Tell your user systemd to reread its unit files with `daemon-reload`,
+    then start the service with `systemctl --user start` and look at
+    `status`. Expect `Active: active (exited)`.
+  - >-
+    Enable it with `systemctl --user enable` so it comes back at your next
+    login, then ask `is-enabled`. Expect a `Created symlink` line, then
+    `enabled`.
+  - >-
+    Find the line it logged with `journalctl --user` and the unit's name.
+    Expect a line ending in `ready`.
 hints:
-  - "`systemctl --user cat pridwend.service` shows a working unit. Yours needs `[Unit]`, `[Service]` and `[Install]`; `Type=oneshot` with `RemainAfterExit=yes` is run-once-and-stay-active, and `WantedBy=default.target` is the install target for user units."
-  - "`systemctl --user daemon-reload` after every edit, then `systemctl --user start pridwen-hello` and `systemctl --user status pridwen-hello`. `ExecStart=/usr/bin/echo ready` is enough."
-  - "`systemctl --user enable pridwen-hello` links it into `default.target.wants`; `journalctl --user -u pridwen-hello` shows what it logged."
+  - >-
+    `systemctl --user cat pridwend.service` shows a working unit (`--user`
+    means your personal systemd, `cat` prints the file). Yours needs the same
+    three sections. In `[Service]`, `Type=oneshot` means run to completion
+    rather than stay running, `RemainAfterExit=yes` keeps it counted as
+    active after the command exits, and `ExecStart=` is the program to run,
+    with its full path. In `[Install]`, `WantedBy=default.target` is the
+    target user units hook into so they start at login.
+  - >-
+    Write the file with nano (`nano ~/.config/systemd/user/pridwen-hello.service`;
+    Ctrl+O saves, Ctrl+X quits) or in one command with
+    `printf '%s\n' line line line > file`, which prints each argument on its
+    own line. Then `systemctl --user daemon-reload` after every edit,
+    `systemctl --user start pridwen-hello`, `systemctl --user status pridwen-hello`,
+    `systemctl --user enable pridwen-hello` (which links it into
+    `default.target.wants`), and `journalctl --user -u pridwen-hello` (`-u`
+    picks one unit) to read what it logged. `ExecStart=/usr/bin/echo ready`
+    is enough.
+  - >-
+    `mkdir -p ~/.config/systemd/user`, then
+    `printf '%s\n' '[Unit]' 'Description=Say ready once' '' '[Service]' 'Type=oneshot' 'RemainAfterExit=yes' 'ExecStart=/usr/bin/echo ready' '' '[Install]' 'WantedBy=default.target' > ~/.config/systemd/user/pridwen-hello.service`,
+    then `systemctl --user daemon-reload`,
+    `systemctl --user start pridwen-hello.service`,
+    `systemctl --user enable pridwen-hello.service`,
+    `systemctl --user is-active pridwen-hello.service`,
+    `systemctl --user is-enabled pridwen-hello.service`, and
+    `journalctl --user -u pridwen-hello.service`.
 checks:
   - id: unit-file
     type: path_exists
     path: "{home}/.config/systemd/user/pridwen-hello.service"
-    fail: "There is no `~/.config/systemd/user/pridwen-hello.service` yet; user units live in that directory."
+    fail: >-
+      There is no `~/.config/systemd/user/pridwen-hello.service` yet; user
+      units live in that directory and nowhere else.
+      `mkdir -p ~/.config/systemd/user`, then write the file there with nano
+      or `printf`.
   - id: active
     type: unit_active
     unit: pridwen-hello.service
     scope: user
-    fail: "`systemctl --user is-active pridwen-hello.service` says {actual}. A oneshot without `RemainAfterExit=yes` goes inactive as soon as it finishes."
+    fail: >-
+      `systemctl --user is-active pridwen-hello.service` says {actual}; it
+      should say `active`. A oneshot without `RemainAfterExit=yes` goes
+      inactive the moment `echo` finishes, so add that line under
+      `[Service]`, then `systemctl --user daemon-reload` and
+      `systemctl --user start pridwen-hello.service`.
   - id: enabled
     type: unit_enabled
     unit: pridwen-hello.service
     scope: user
-    fail: "`is-enabled` says {actual}; enabling is what makes it start at your next login, and it needs an `[Install]` section to work."
+    fail: >-
+      `systemctl --user is-enabled pridwen-hello.service` says {actual}; it
+      should say `enabled` (`exit 1` means the file was not found). Enabling
+      needs an `[Install]` section with `WantedBy=default.target` in the
+      file; add it, `systemctl --user daemon-reload`, then
+      `systemctl --user enable pridwen-hello.service`.
   - id: logged
     type: journal_has
     regex: 'ready'
     unit: pridwen-hello.service
     since: "-24h"
-    fail: "Nothing from `pridwen-hello.service` in your user journal today; start it after the file is right, then read `journalctl --user -u pridwen-hello.service`."
+    fail: >-
+      The checker read {actual} from `pridwen-hello.service` in your user
+      journal for the last day and none said `ready`. Start it once the file
+      is right (`systemctl --user start pridwen-hello.service`) and read
+      `journalctl --user -u pridwen-hello.service`; if it logged nothing,
+      `ExecStart=/usr/bin/echo ready` is the line to fix.
 cleanup: |
   systemctl --user disable --now pridwen-hello.service >/dev/null 2>&1 || true
   rm -f ~/.config/systemd/user/pridwen-hello.service

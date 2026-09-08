@@ -9,15 +9,21 @@
     not_sudo: true
     probe: unreadable:{path}
   hint: >-
-    `{path}` is readable only by root because it holds password hashes or the sudo policy.
-    `ls -l {path}` shows the owner and mode; `sudo cat {path}` reads it on purpose.
+    `{path}` is readable only by root because it holds password hashes or the sudo policy, so you were refused on purpose.
+    `ls -l {path}` shows the owner and mode; `sudo cat {path}` reads it as root and is recorded.
   why: |
-    `/etc/passwd` is world-readable so tools can map ids to names, but the hashes moved to
-    `/etc/shadow` decades ago precisely so that ordinary users cannot read them.
+    `/etc/passwd` is readable by everyone so that tools can turn a uid into a name, but the
+    password hashes were moved out of it into `/etc/shadow` decades ago precisely so that
+    ordinary users cannot read them and try to crack them offline. `/etc/shadow` is mode
+    000 and owned by root: no bits for anyone, and root skips the check. `/etc/sudoers`
+    is closed for the same reason; it says who may become root. Pridwen keeps both exactly
+    as Fedora ships them because that split is one of the oldest security decisions on
+    Unix and every hardening baseline depends on it.
     Ways forward:
-      1. `sudo cat {path}`               read it as root, which the journal records
-      2. `getent shadow $USER`           the API way, still needs root
-      3. `ls -l /etc/passwd /etc/shadow` compare the two modes
+      1. `sudo cat {path}`                   read it as root, which the journal records
+      2. `ls -l /etc/passwd /etc/shadow`     compare the two modes, 644 and 000
+      3. `getent passwd {user}`              the readable half of your own account
+      4. `pridwen learn perm-02`             why some files are closed by design
   man: [shadow(5), passwd(5), chmod(1)]
   cooldown: 3600
   priority: 15
@@ -30,16 +36,21 @@
     not_sudo: true
     probe: unwritable:{path}
   hint: >-
-    `{path}` is owned by root, so you can read it but not save it as yourself.
-    `sudo -e {path}` edits a copy and installs it when you finish.
+    `{path}` is owned by root, so you can read it but not save changes as yourself.
+    `sudo -e {path}` edits a copy in your own editor and installs it as root when you finish.
   why: |
-    System configuration lives in `/etc` and is writable only by root. Your editor may let
-    you open the file, but the save will fail. `sudo -e` (sudoedit) copies the file, runs
-    your editor unprivileged, and writes the result back as root.
+    System configuration lives in `/etc`, and its files are readable by everyone but
+    writable only by root, so that any program can read its settings while only an
+    administrator can change them. Your editor opened the file happily; the write is what
+    failed. `sudo -e` (also called sudoedit) is the safe way to edit: it copies the file,
+    runs your normal editor as you, and writes the result back as root only when you
+    save, so a mistake in the editor never runs with root's power. Pridwen records every
+    sudo use in the journal.
     Ways forward:
       1. `sudo -e {path}`                     the safe edit
       2. `sudo cp {path} {path}.bak`          keep the original first
       3. `ls -l {path}`                       see the owner and mode you ran into
+      4. `pridwen explain sudo`               what `-e` and the other flags do
   man: [sudoedit(8), chmod(1)]
   cooldown: 3600
   priority: 12
@@ -50,18 +61,23 @@
     command: '^(sudo\s+)?(cp|mv|touch|rm|mkdir|vim?|nano|tee|ln|chmod|chown|sed\s+-i)\s+.*(?P<path>/usr/\S+)'
     probe: ostree
   hint: >-
-    `/usr` is part of the read-only image on Pridwen, so even root gets "Read-only file system" there.
-    Changes belong in the image build, `/etc`, `/var`, or your home.
+    `/usr` is part of the read-only Pridwen image, so even root gets "Read-only file system" there; this is a mount property, not a permission.
+    Changes belong in `/etc`, `/var`, `/usr/local`, your home, or the image build.
   why: |
-    Pridwen is image-based: `/usr` comes from a container image and is mounted read-only
-    so that every machine running the same version is byte-for-byte identical, and so
-    that `bootc rollback` always works. `/usr/local` is a link into `/var/usrlocal`,
-    which is writable.
+    Pridwen is image-based: everything under `/usr` comes from a container image
+    (`ghcr.io/natethomass/pridwen`) that is mounted read-only. Nothing can be written there
+    in place, by anyone, which is why the message is "Read-only file system" rather than
+    "Permission denied". That is the design, not a limitation: every machine on the same
+    version is identical byte for byte, an update is a whole new image applied at the next
+    boot, and `bootc rollback` can always put the previous one back. `/usr/local` is a
+    link into `/var/usrlocal`, which is writable, and `/etc`, `/var` and your home persist
+    across upgrades.
     Ways forward:
       1. `~/.local/bin` or `/usr/local/bin`   for scripts and small tools
       2. `/etc`                                for configuration overrides
-      3. `rpm-ostree install` / Flatpak / Distrobox   for packages
+      3. Flatpak, Distrobox, or `rpm-ostree install`   for software
       4. Containerfile in the Pridwen repo     to change the image itself
+      5. `pridwen learn perm-02`               the two kinds of "no" side by side
   man: [bootc(8), rpm-ostree(1), hier(7)]
   cooldown: 3600
   priority: 20
@@ -72,7 +88,19 @@
     command: '^(sudo\s+)?chmod\s+\S+\s+(?P<path>\S+)\s*$'
     probe: missing:{path}
   hint: >-
-    `{path}` does not exist from here, so there was nothing to change. Check the name with `ls` or Tab completion.
+    `{path}` does not exist in the directory you are standing in, so there was nothing to change the mode of.
+    Check the name with `ls` or Tab completion, and `pwd` to confirm where you are.
+  why: |
+    `chmod` changes the permission bits of an existing file, and it resolves the name from
+    your current working directory unless the path starts with `/` or `~`. When the file
+    is not found it reports "No such file or directory" and changes nothing. The usual
+    causes are a typo, a file that lives in a different directory than the one you are in,
+    or a script you have not created yet. Nothing is broken; find the file first and then
+    run the same `chmod` again.
+    Ways forward:
+      1. `ls -l`                       see the real names here
+      2. `ls -d {path}*`               catch a near-miss in the spelling
+      3. `find {home} -name '{path}'`  search your home for it
   man: [chmod(1)]
   cooldown: 3600
   priority: 12
@@ -84,15 +112,20 @@
     not_sudo: true
     probe: exists:{path}
   hint: >-
-    Only a file's owner or root may change its mode. `ls -l {path}` shows the owner; if it is root, `sudo chmod` is the tool.
+    Only a file's owner or root may change its mode, and `{path}` is not yours ("Operation not permitted").
+    `ls -l {path}` shows the owner; if it is root and you mean it, `sudo chmod` is the tool.
   why: |
-    Mode bits belong to the owner. Being able to write a file does not mean you may change
-    who can run it. That keeps a shared file from being made executable behind its owner's
-    back.
+    The mode bits belong to the file's owner, because they express the owner's decision
+    about who may read, write and run the file. Being allowed to write a file does not
+    mean you may change who can execute it; if it did, anyone with write access to a
+    shared file could make it runnable behind the owner's back. The kernel answers
+    "Operation not permitted", its wording for "this needs the owner or root", which is
+    different from "Permission denied", which is about the bits themselves.
     Ways forward:
-      1. `ls -l {path}`                 find the owner
+      1. `ls -l {path}`                 find the owner and group
       2. `sudo chmod ... {path}`        as root, if it is a system file you are meant to change
       3. `cp {path} ~/`                 work on your own copy instead
+      4. `pridwen learn perm-03`        chmod, chown and chgrp and who may run each
   man: [chmod(1), chown(1)]
   cooldown: 3600
   priority: 5
@@ -103,14 +136,20 @@
     command: '^chown\s+'
     not_sudo: true
   hint: >-
-    Giving a file to another user is a root-only operation on Linux, even for files you own. `sudo chown user:group file`.
+    Giving a file to another user is a root-only operation on Linux, even for files you own ("Operation not permitted").
+    `sudo chown user:group file` does it; `chgrp` can change just the group, to one you belong to, without root.
   why: |
-    If users could give files away, disk quotas and setuid checks would be trivial to
-    defeat. So the kernel restricts chown to CAP_CHOWN, which means root.
+    If users could give files away, several protections would stop working: disk quotas
+    could be dodged by handing large files to someone else, and setuid programs could be
+    planted under another user's name. So the kernel reserves changing a file's owner for
+    root (the CAP_CHOWN capability), whoever owns the file. Changing only the group is
+    allowed as yourself, provided you are a member of the group you name, which is how
+    teams share files without involving an administrator.
     Ways forward:
-      1. `sudo chown {user}:{user} file`     set owner and group in one go
-      2. `chgrp group file`              you may change the group to one you belong to
-      3. `id`                            lists the groups you are in
+      1. `sudo chown {user}:{user} file`     set owner and group in one go, as root
+      2. `chgrp group file`              change just the group, to one you belong to
+      3. `id`                            list the groups you are in
+      4. `pridwen explain chown`         the flags, including `-R` for a whole tree
   man: [chown(1), chgrp(1), capabilities(7)]
   cooldown: 3600
 - id: perm-chmod-777
@@ -120,17 +159,21 @@
     command: '^(sudo\s+)?chmod\s+(-R\s+)?(a\+rwx|777|0777)\b'
     exit: any
   hint: >-
-    `777` lets every account on the machine write and run that file, which fixes the symptom and opens a hole.
+    `777` lets every account on the machine, including any compromised service, write and run that file; it fixes the symptom and opens a hole.
     Say what you need: `chmod 644` for data, `755` for a script, or `chown` it to the right user.
   why: |
-    Mode 777 is the usual reflex when something says "Permission denied". It works, and
-    it also means any process running as any user, including a compromised service, can
-    replace the file. The right fix is almost always ownership, group membership, or a
-    narrower mode.
+    Mode 777 is the usual reflex when something says "Permission denied", and it works,
+    which is the problem. It also means any process running as any user on the machine,
+    including a web server or a container that has been broken into, can replace the file
+    with whatever it likes. Pridwen is hardened by default, and its posture check treats
+    world-writable files as findings for that reason. The right fix is almost always
+    narrower: give the file to the user who needs it, share it through a group, or add
+    just the one bit that was missing.
     Ways forward:
       1. `chmod u+x script.sh`             just the bit you needed
-      2. `sudo chown $USER file`           make it yours instead of everyone's
+      2. `sudo chown {user} file`          make it yours instead of everyone's
       3. `chmod g+w file; chgrp team file` share through a group
+      4. `pridwen learn perm-03`           the narrower moves, with examples
   man: [chmod(1), chown(1)]
   cooldown: 3600
   priority: 30
@@ -142,7 +185,20 @@
     not_sudo: true
     probe: unreadable:{path}
   hint: >-
-    Most files under `/var/log` are root-only. The journal is the front door: `journalctl` works for wheel members without sudo.
+    Most files under `/var/log` are readable only by root, so `{path}` refused you as yourself.
+    The journal is the front door: `journalctl` works for wheel members without sudo, and `sudo {cmd} {path}` reads the file directly.
+  why: |
+    Log files can contain user names, addresses, and the details of what every service
+    did, so Fedora keeps most of `/var/log` readable only by root and a few system groups.
+    On Pridwen the systemd journal is the primary log, and members of `wheel` may read it
+    without sudo, which covers almost every question you will have. The classic text files
+    such as `/var/log/audit/audit.log` remain root-only and are read with `sudo`, which
+    leaves a record of who looked.
+    Ways forward:
+      1. `journalctl -e`                   the end of the system journal
+      2. `journalctl -u <unit>`            the log of one service
+      3. `sudo {cmd} {path}`               read the file as root, recorded in the journal
+      4. `pridwen explain journalctl`      the filtering flags
   man: [journalctl(1)]
   cooldown: 3600
   priority: 10
@@ -153,7 +209,19 @@
     command: '^(cd|ls|cat|less|find|tree)\s+.*(?P<path>/root(/\S*)?)\b'
     not_sudo: true
   hint: >-
-    `/root` is root's home and has mode 0700, so no other user can even list it. `sudo ls -la /root` if you need to look.
+    `/root` is the root user's home directory and has mode 0700, so no other account may list or enter it.
+    `sudo ls -la /root` looks as root if you need to; nothing is wrong.
+  why: |
+    Every account gets a private home directory, and root's is `/root` rather than
+    something under `/home`, so it is available even when `/home` is on a separate disk
+    that has not been mounted yet. It is mode 0700: the owner may do everything and nobody
+    else may list, enter or change it. That is the same privacy every user's home gets on
+    Fedora, applied to the most sensitive account on the machine. You can see the name
+    `/root` because `/` lets you read names; entering it is what needs root.
+    Ways forward:
+      1. `sudo ls -la /root`           look as root, recorded in the journal
+      2. `ls -ld /root`                see the mode and owner you ran into
+      3. `pridwen learn perm-02`       the owner, group, other checks in order
   man: [hier(7)]
   cooldown: 3600
   priority: 10
@@ -165,8 +233,19 @@
     not_sudo: true
     probe: unreadable:{path}
   hint: >-
-    Home directories on Fedora are created with mode 0700, so `{path}` belongs to its owner alone.
-    `ls -ld {path}` shows that; root can still look.
+    Home directories on Fedora are created with mode 0700, so `{path}` belongs to its owner alone and refused you.
+    `ls -ld {path}` shows the mode; root can still look with `sudo`.
+  why: |
+    When an account is created, Fedora gives its home directory mode 0700: read, write
+    and execute for the owner, nothing for the group or anyone else. That keeps each
+    person's files, browser profile and keys private from every other account on the
+    machine, which matters on a shared workstation and on every server. The kernel checks
+    owner first, then group, then other, and stops at the first match, so as "other" you
+    are refused before a single file inside is considered.
+    Ways forward:
+      1. `ls -ld {path}`               see the mode and owner
+      2. `sudo ls -la {path}`          look as root, which the journal records
+      3. `pridwen learn perm-02`       why some directories are closed by design
   man: [useradd(8), chmod(1)]
   cooldown: 3600
   priority: 8
@@ -177,7 +256,21 @@
     command: '^(echo|tee|printf)\b.*(?P<path>/(proc|sys)/\S+)'
     not_sudo: true
   hint: >-
-    `{path}` is a kernel setting, writable only by root. For `/proc/sys` the proper tool is `sudo sysctl -w`, with the persistent copy in `/etc/sysctl.d/`.
+    `{path}` is a live kernel setting, writable only by root, so the write was refused.
+    For `/proc/sys` the proper tool is `sudo sysctl -w`, with the persistent copy in `/etc/sysctl.d/`.
+  why: |
+    `/proc` and `/sys` are not real directories on disk; they are windows the kernel opens
+    onto its own settings and state. Writing a value there changes how the running kernel
+    behaves, immediately, for every user, which is why only root may do it. Pridwen
+    ships a hardened set of these settings, and the right way to change one is `sysctl`,
+    which writes the live value, plus a file in `/etc/sysctl.d/` so the change survives a
+    reboot. Note that `sudo echo x > file` does not work either, because the shell opens
+    the file before sudo runs.
+    Ways forward:
+      1. `sudo sysctl -w <key>=<value>`            set it now
+      2. `sudo tee /etc/sysctl.d/90-local.conf`    make it persistent
+      3. `sysctl <key>`                            read the current value, no root needed
+      4. `pridwen learn perm-02`                   the read-only and root-only layers
   man: [sysctl(8), proc(5)]
   cooldown: 3600
   priority: 8
@@ -188,7 +281,18 @@
     command: '^chmod\s+'
     exit: [0]
   hint: >-
-    Mode changed. `ls -l` shows the result; `stat -c %a file` prints it as a number like 644.
+    Mode changed and `chmod` printed nothing, which is success. `ls -l` shows the result as letters; `stat -c %a file` prints it as a number like 644.
+  why: |
+    `chmod` changes the nine permission bits on a file: read, write and execute for the
+    owner, the group and everyone else. It is silent on success, as most Linux tools are,
+    so the way to confirm what you did is to look at the file again. `ls -l` shows the
+    bits as letters such as `-rw-r--r--`, and `stat -c %a` shows the same bits as an octal
+    number, where read is 4, write is 2 and execute is 1, added up per group. Nothing went
+    wrong; the Coach mentions this once so you know how to check your own work.
+    Ways forward:
+      1. `ls -l file`                  the mode as letters
+      2. `stat -c '%A %a' file`        letters and number side by side
+      3. `pridwen learn perm-01`       reading the mode column
   man: [chmod(1), stat(1)]
   cooldown: 604800
   priority: -10
@@ -199,7 +303,20 @@
     command: '^umask\s+0*(00[0-7]|0[0-7]0)\s*$'
     exit: any
   hint: >-
-    That umask makes every new file group- or world-writable for the rest of this shell. `umask 022` is the usual default, `077` the private one.
+    That umask makes every new file group- or world-writable for the rest of this shell session, which is a hole rather than a fix.
+    `umask 022` is the usual default and `077` the private one; a single file wants `chmod`, not a umask change.
+  why: |
+    The umask is a filter applied to every file and directory you create: it lists the
+    permission bits that new files should start without. The default `022` removes write
+    for the group and for everyone else, so a new file is 644 and a new directory 755.
+    A umask ending in `00` removes nothing, so everything you create until you close the
+    shell is writable by other accounts, which any hardening baseline, including Pridwen's,
+    treats as a finding. If one file needs wider access, `chmod` that file instead.
+    Ways forward:
+      1. `umask 022`                   back to the normal default
+      2. `umask 077`                   new files private to you
+      3. `umask`                       show the current value
+      4. `chmod g+w file`              open one file to the group, if that was the goal
   man: [umask(2), bash(1)]
   cooldown: 3600
   priority: 20

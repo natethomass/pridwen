@@ -6,48 +6,111 @@ required: true
 minutes: 10
 target: host
 brief: |
-  You are about to take this laptop to a coffee shop. Everything listening on
-  it, from the Coach's socket to whatever a Flatpak opened, will be sitting on
-  a network with strangers. The firewall is what decides which of those
-  listeners a stranger can reach, and it decides by zone.
+  You are about to take this laptop to a coffee shop. Everything listening
+  on it, from the Coach's socket to whatever a Flatpak opened, will be
+  sitting on a network with strangers. The firewall is what decides which of
+  those listeners a stranger can reach. On Pridwen it is firewalld, and it
+  decides by zone: a zone is a named set of rules (which services and ports
+  are allowed in) that a network connection is assigned to, and the default
+  zone is the one every new connection lands in unless you say otherwise.
+  Each zone has a target, the one word that says what happens to a packet
+  nothing else matched: `DROP` discards it silently, `REJECT` sends back a
+  refusal, `default` behaves like reject for most zones, and `ACCEPT` lets
+  it through.
 
-  This mission changes nothing; it reads. Find the default zone and write its
-  name down. List everything the active zone permits and pick out its target,
-  the one word that says what happens to a packet nothing else matched. List
-  the zones firewalld knows and find `drop`, the strictest one and the one
-  Pridwen intends to boot into. Then put this next to the listening sockets
-  you saved in the networking mission and decide, for each, whether someone at
-  the next table could reach it. If the answer is ever yes and you did not
-  mean it, the next lesson is how to open exactly one thing and nothing more.
+  This mission changes nothing; it reads. `firewall-cmd` is the tool that
+  asks firewalld questions and, later, gives it orders. Find the default
+  zone and write its name down. List everything the active zone permits and
+  pick out its target. List the zones firewalld knows and find `drop`, the
+  strictest one and the one Pridwen intends to boot into. Reading the
+  firewall goes through a system service, so firewalld may ask you to
+  authenticate; `sudo` in front of the read is the honest answer. Then put
+  this next to the listening sockets you saved in the networking mission
+  and decide, for each, whether someone at the next table could reach it. A
+  socket bound to `0.0.0.0` or `*` accepts connections from any address, but
+  only if the zone lets that port in; one bound to `127.0.0.1` is reachable
+  from this machine alone. If the answer is ever yes and you did not mean
+  it, the next lesson is how to open exactly one thing and nothing more.
+
+  On a job, reading the firewall before touching it is the difference
+  between a change and an outage. Done looks like four answer files. The
+  checker reads them for a bare zone name, a `target:` line, the target
+  word alone, and the word `drop` in the zone list.
 steps:
-  - Save the name of the default zone in `~/pridwen/answers/fw-default-zone.txt`.
-  - Save everything the active zone permits in `~/pridwen/answers/fw-list-all.txt`, then write its target on its own in `~/pridwen/answers/fw-target.txt`.
-  - Save the names of all zones firewalld knows in `~/pridwen/answers/fw-zones.txt` and find `drop`.
-  - Compare the listening sockets from the networking mission with what the zone allows in, and decide which are reachable from another machine.
+  - >-
+    Ask `firewall-cmd` for the default zone and save just the name in
+    `~/pridwen/answers/fw-default-zone.txt`. Expect one word, `drop` on a
+    stock Pridwen.
+  - >-
+    Ask `firewall-cmd` to list everything the active zone permits and save
+    it in `~/pridwen/answers/fw-list-all.txt`, then copy the target word
+    alone into `~/pridwen/answers/fw-target.txt`. Expect a block with
+    `target:`, `interfaces:`, `services:` and `ports:` lines, and `DROP` as
+    the target.
+  - >-
+    Ask `firewall-cmd` for the names of all zones and save them in
+    `~/pridwen/answers/fw-zones.txt`. Expect a single line of names
+    including `drop`, `public` and `trusted`.
+  - >-
+    Compare the listening sockets in `~/pridwen/answers/ss-listen.txt` with
+    what the zone allows in, and decide which are reachable from another
+    machine. Expect none on a stock Pridwen in the `drop` zone.
 hints:
-  - "`firewall-cmd --get-default-zone`, `--list-all` and `--get-zones` are reads; firewalld may still ask for authentication, and `sudo` in front is the honest answer."
-  - "In `--list-all` output the `target:` line says what happens to packets nothing else matched; `DROP` discards silently, `default` rejects with a reply."
-  - "A socket listening on `0.0.0.0` or `*` is reachable from outside only if the zone lists its service or port."
+  - >-
+    `firewall-cmd --get-default-zone`, `firewall-cmd --list-all` and
+    `firewall-cmd --get-zones` are reads: the first prints one word, the
+    second a block describing the active zone, the third one line of names.
+    firewalld may still ask for authentication because the question goes
+    through a system service, and `sudo` in front is the honest answer.
+  - >-
+    In `--list-all` output the `target:` line says what happens to packets
+    nothing else matched; `DROP` discards silently, `default` rejects with a
+    reply. `awk '/target:/ {print $2}' FILE` keeps that line and prints its
+    second word. A socket listening on `0.0.0.0` or `*` is reachable from
+    outside only if the zone lists its service or port; `127.0.0.1` never
+    is. With `sudo command > file` the file is still written by your shell
+    as you.
+  - >-
+    `sudo firewall-cmd --get-default-zone > ~/pridwen/answers/fw-default-zone.txt`,
+    then `sudo firewall-cmd --list-all > ~/pridwen/answers/fw-list-all.txt`,
+    then `awk '/target:/ {print $2}' ~/pridwen/answers/fw-list-all.txt > ~/pridwen/answers/fw-target.txt`,
+    then `sudo firewall-cmd --get-zones > ~/pridwen/answers/fw-zones.txt`.
 checks:
   - id: default-zone
     type: path_contains
     path: "{home}/pridwen/answers/fw-default-zone.txt"
     regex: '^[A-Za-z][\w-]*\s*$'
-    fail: "`fw-default-zone.txt` should hold just the zone name on one line."
+    fail: >-
+      `fw-default-zone.txt` is {actual} and does not hold just a zone name
+      on one line.
+      `sudo firewall-cmd --get-default-zone > ~/pridwen/answers/fw-default-zone.txt`
+      writes exactly that.
   - id: list-all
     type: path_contains
     path: "{home}/pridwen/answers/fw-list-all.txt"
     regex: 'target:'
-    fail: "`fw-list-all.txt` should be `--list-all` output, which includes a `target:` line."
+    fail: >-
+      `fw-list-all.txt` is {actual} and has no `target:` line, so it is not
+      `--list-all` output.
+      `sudo firewall-cmd --list-all > ~/pridwen/answers/fw-list-all.txt`
+      saves the active zone's full description.
   - id: target
     type: path_contains
     path: "{home}/pridwen/answers/fw-target.txt"
     regex: '^(DROP|ACCEPT|REJECT|default|%%REJECT%%)\s*$'
-    fail: "`fw-target.txt` should hold the zone's target word alone: DROP, ACCEPT, REJECT or default."
+    fail: >-
+      `fw-target.txt` is {actual} and does not hold the zone's target word
+      alone: DROP, ACCEPT, REJECT or default.
+      `awk '/target:/ {print $2}' ~/pridwen/answers/fw-list-all.txt > ~/pridwen/answers/fw-target.txt`
+      copies just that word.
   - id: zones
     type: path_contains
     path: "{home}/pridwen/answers/fw-zones.txt"
     regex: '\bdrop\b'
-    fail: "`fw-zones.txt` should list every zone, and `drop` is always one of them."
+    fail: >-
+      `fw-zones.txt` is {actual} and does not list `drop`, which firewalld
+      always ships.
+      `sudo firewall-cmd --get-zones > ~/pridwen/answers/fw-zones.txt` saves
+      the full list of zone names.
 cleanup: |
   rm -f ~/pridwen/answers/fw-default-zone.txt ~/pridwen/answers/fw-list-all.txt ~/pridwen/answers/fw-target.txt ~/pridwen/answers/fw-zones.txt

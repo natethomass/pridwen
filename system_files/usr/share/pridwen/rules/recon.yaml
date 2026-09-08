@@ -9,7 +9,21 @@
     exit: [127]
     probe: no_command:nmap
   hint: >-
-    nmap is not in the base image; run it from a Distrobox aimed at your Range, never at machines you do not own. `sudo ss -tlnp` shows the same open ports from inside a host you control.
+    `nmap` is not in the Pridwen image, on purpose. Run it from a Distrobox or the Range attacker box, only at hosts you own; `sudo ss -tlnp` shows the same open ports from inside a host you control.
+  why: |
+    The shell searched your PATH and found no `nmap`: exit 127. The scanner is
+    left out of the base image because the host is a hardened daily driver, not
+    an attack box, and because `/usr` is read-only there is no `dnf install` to
+    reach for. Attack tooling belongs in a container you can throw away: a
+    Distrobox gives you a normal Fedora with `dnf` inside it, and the Range
+    attacker box has `nmap` already. Whichever you use, the rule is the same:
+    scan only Range hosts and your own Pridwen machine. Scanning anything else
+    is unauthorised access, and nothing in this course ever asks for it.
+    Ways forward:
+      1. `distrobox create -n lab -i registry.fedoraproject.org/fedora:43`   a throwaway Fedora box
+      2. `distrobox enter lab`                                                then `sudo dnf install -y nmap` inside it
+      3. `sudo ss -tlnp`                                                      the target's own list of open ports
+      4. `pridwen learn recon-01`                                             the scan and the target's view, side by side
   man: [distrobox(1), ss(8)]
   cooldown: 86400
   priority: 10
@@ -20,7 +34,21 @@
     command: '^(sudo\s+)?nmap\s+.*(?P<target>\d+\.\d+\.\d+\.\d+|[a-z0-9.-]+)'
     exit: any
   hint: >-
-    Only scan hosts you are authorised to, which in Pridwen means your Range (`web-01`, the Rocky twins). From the target's side a scan is just a burst of connection attempts in `ss` and the journal.
+    You scanned `{target}`. Only scan hosts you are authorised to, which on Pridwen means your Range and your own machine; from the target's side the scan is a burst of attempts visible in `ss` and the journal.
+  why: |
+    You pointed `nmap` at `{target}`. A scan sends a probe to many ports and
+    records which answer, and on a host you own that is the most direct way to
+    see your own attack surface. On a host you do not own it is unauthorised
+    access, whatever the intent, so the Coach names the target every time to
+    keep the habit honest: Range hosts and your own Pridwen machine only. From
+    the target's side, a scan looks like hundreds of connection attempts in a
+    few seconds, which a firewall in the `drop` zone answers with silence; that
+    is why `nmap` may say the host seems down and suggest `-Pn`.
+    Ways forward:
+      1. `nmap -Pn -sV {target}`                     skip the ping, read service versions
+      2. `sudo ss -tlnp`                             on {target}: the same ports from inside
+      3. `journalctl -k --since -5m`                 on {target}: what the firewall logged, if logging is on
+      4. `pridwen learn recon-01`                    mapping from both sides
   man: [nmap(1)]
   cooldown: 3600
   priority: 5

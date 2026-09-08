@@ -7,45 +7,105 @@ minutes: 10
 target: host
 brief: |
   You are about to keep two kinds of things under `~/pridwen`: a private
-  directory with a secrets file that is nobody's business, and a shared readme
-  that anyone with an account on this machine may read but only you may change.
-  The mode bits are the whole difference, and on Fedora a new file does not
-  always start where you expect, so look before you assume.
+  directory with a secrets file that is nobody's business, and a shared
+  readme that anyone with an account on this machine may read but only you
+  may change. Linux decides who may do what to a file with its mode: nine
+  permission bits in three groups of three, read, write and execute, for the
+  owner, for the owning group, and for everyone else. Written as a number,
+  read is 4, write is 2, execute is 1, and each group of three adds up to
+  one digit, so `600` is read and write for the owner and nothing for anyone
+  else, `700` adds execute (which on a directory means "may enter it"), and
+  `644` lets everyone read while only the owner writes.
 
-  While you are reading modes, read one you cannot open. `/etc/shadow` holds
-  the password hashes for every account, and its mode is the reason `cat` was
-  refused the first time you tried. You are allowed to know the number even
-  though you are not allowed to see the contents; write it down.
+  The mode bits are the whole difference between private and shared, and a
+  new file does not always start out where you expect: the shell applies a
+  default called the umask, so look at the mode `ls -l` reports before you
+  assume. `chmod` (change mode) sets the bits; `stat` prints them as a
+  number. While you are reading modes, read one you cannot open.
+  `/etc/shadow` holds the password hashes for every account, and its mode is
+  the reason `cat` was refused the first time you tried. You are allowed to
+  know the number even though you are not allowed to see the contents;
+  write it down.
+
+  On a job, most "someone read a file they should not have" incidents start
+  with a mode that nobody checked. Done looks like `~/pridwen/private` at
+  `700` with `secrets.txt` at `600` inside, `~/pridwen/shared/readme.txt` at
+  `644`, and `~/pridwen/answers/shadow-mode.txt` holding the mode of
+  `/etc/shadow`. The checker reads the permission bits of the three paths
+  directly and reads the number in your answer file.
 steps:
-  - Create `~/pridwen/private` with a file called `secrets.txt` inside it holding any line of text.
-  - Make the directory enterable by you alone and the file readable and writable by you alone.
-  - Create `~/pridwen/shared/readme.txt` and make it readable by everyone but writable only by you.
-  - Find the numeric mode of `/etc/shadow` and write it in `~/pridwen/answers/shadow-mode.txt`.
+  - >-
+    Create `~/pridwen/private` with `mkdir` and put any line of text into
+    `secrets.txt` inside it with `echo` and `>`. Expect `ls -l` to show the
+    file with the default mode, usually `-rw-r--r--`.
+  - >-
+    Set the directory to mode 700 and the file to 600 with `chmod`. Expect
+    `ls -ld ~/pridwen/private` to show `drwx------` and `ls -l` on the file
+    to show `-rw-------`.
+  - >-
+    Create `~/pridwen/shared/readme.txt` the same way and set it to 644.
+    Expect `-rw-r--r--`.
+  - >-
+    Read the numeric mode of `/etc/shadow` with `stat` and send the number
+    into `~/pridwen/answers/shadow-mode.txt`. Expect `0`, and expect
+    `cat /etc/shadow` to still say `Permission denied`.
 hints:
-  - "`ls -l` and `stat -c '%a %n' file` show the mode; new files on Fedora often start out group-writable, so check."
-  - "`chmod 700` on a directory and `chmod 600` on a file give the owner everything and everyone else nothing; `chmod 644` is read for all, write for the owner."
-  - "`stat -c %a /etc/shadow` prints the number; you may read the mode of a file you cannot open."
+  - >-
+    `ls -l` shows each file's mode as ten characters: a type letter, then
+    `rwx` for the owner, the group and others. `ls -ld DIR` (`-d` means the
+    directory itself, not its contents) shows a directory's own mode.
+    `stat -c '%a %n' FILE` prints the mode as a number and the name: `-c`
+    chooses the format, `%a` is the octal mode, `%n` the name. Reading a
+    file's mode never needs permission to read the file.
+  - >-
+    `chmod MODE PATH` sets the bits: `chmod 700` on a directory and
+    `chmod 600` on a file give the owner everything and everyone else
+    nothing; `chmod 644` is read for all, write for the owner only.
+    `mkdir -p` creates the parent directories too, and `echo 'text' > file`
+    creates the file with that line inside.
+  - >-
+    `mkdir -p ~/pridwen/private ~/pridwen/shared`, then
+    `echo 'my secret' > ~/pridwen/private/secrets.txt`, then
+    `chmod 700 ~/pridwen/private`, then
+    `chmod 600 ~/pridwen/private/secrets.txt`, then
+    `echo 'hello, everyone' > ~/pridwen/shared/readme.txt`, then
+    `chmod 644 ~/pridwen/shared/readme.txt`, then
+    `stat -c %a /etc/shadow > ~/pridwen/answers/shadow-mode.txt`.
 checks:
   - id: private-dir
     type: path_mode
     path: "{home}/pridwen/private"
     mode: "0700"
-    fail: "`~/pridwen/private` has mode {actual}; it should be 0700."
+    fail: >-
+      `~/pridwen/private` has mode {actual}; it should be 0700, so that only
+      you can enter it. `mkdir -p ~/pridwen/private` if it is missing, then
+      `chmod 700 ~/pridwen/private`.
   - id: secrets
     type: path_mode
     path: "{home}/pridwen/private/secrets.txt"
     mode: "0600"
-    fail: "`secrets.txt` has mode {actual}; it should be 0600, owner read and write only."
+    fail: >-
+      `secrets.txt` has mode {actual}; it should be 0600, owner read and
+      write only. `chmod 600 ~/pridwen/private/secrets.txt` sets it (create
+      the file first with `echo 'my secret' > ~/pridwen/private/secrets.txt`
+      if it is missing).
   - id: readme
     type: path_mode
     path: "{home}/pridwen/shared/readme.txt"
     mode: "0644"
-    fail: "`readme.txt` has mode {actual}; it should be 0644: the owner may write, everyone may read."
+    fail: >-
+      `readme.txt` has mode {actual}; it should be 0644: the owner may write,
+      everyone may read. `chmod 644 ~/pridwen/shared/readme.txt` sets it once
+      the file exists.
   - id: shadow-mode
     type: path_contains
     path: "{home}/pridwen/answers/shadow-mode.txt"
     regex: '^0{1,4}\s*$'
-    fail: "`shadow-mode.txt` should hold the numeric mode of `/etc/shadow`, which on Fedora is 0: no bits for anyone, and root ignores the bits."
+    fail: >-
+      `shadow-mode.txt` is {actual} and does not hold the numeric mode of
+      `/etc/shadow`, which on Fedora is 0: no bits for anyone, and root
+      ignores the bits anyway.
+      `stat -c %a /etc/shadow > ~/pridwen/answers/shadow-mode.txt` writes it.
 cleanup: |
   rm -rf ~/pridwen/private ~/pridwen/shared
   rm -f ~/pridwen/answers/shadow-mode.txt

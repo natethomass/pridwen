@@ -9,14 +9,20 @@
     exit: any
     probe: no_command:ifconfig
   hint: >-
-    `ifconfig` is not shipped; `ip addr` shows interfaces and addresses, `ip -br addr` the short form. The iproute2 tools replaced net-tools years ago.
+    `ifconfig` is not on this system because Pridwen ships iproute2, not the old net-tools. `ip -br addr` shows every interface and address on one line each, and `ip addr` shows the full detail.
   why: |
-    net-tools stopped tracking the kernel's networking features long ago. iproute2 (`ip`,
-    `ss`, `bridge`) covers everything ifconfig, route and netstat did, and more.
+    The shell searched every directory on your PATH for a program called `ifconfig` and
+    found none, so it printed `command not found`. Pridwen does not ship the net-tools
+    package that provided it, and neither does current Fedora or RHEL. net-tools stopped
+    tracking the kernel's networking features long ago: it cannot show several addresses on
+    one interface or anything about IPv6 properly. iproute2 (`ip`, `ss`, `bridge`) covers
+    everything `ifconfig`, `route` and `netstat` did, and more, so learning `ip` here is the
+    skill that transfers to every current system.
     Ways forward:
-      1. `ip -br addr`               addresses, one line per interface
-      2. `ip link`                   interface state and MAC
-      3. `ip route`                  the routing table, including the default gateway
+      1. `ip -br addr`                  addresses, one line per interface, with UP or DOWN
+      2. `ip link`                      interface names, state and MAC address
+      3. `ip route`                     the routing table; the `default` line is your gateway
+      4. `pridwen explain ip`           what each flag and subcommand means
   man: [ip(8), ip-address(8)]
   cooldown: 86400
   priority: 30
@@ -28,7 +34,19 @@
     exit: any
     probe: no_command:netstat
   hint: >-
-    `netstat` is not shipped. `ss -tulnp` lists listening TCP and UDP sockets with the owning process; `ss -tn` shows established connections.
+    `netstat` is not shipped; `ss` replaced it. `ss -tulnp` lists listening TCP and UDP sockets with numeric ports and the owning process, and `ss -tn` shows established connections.
+  why: |
+    The shell could not find a program called `netstat`, so the command never ran. It came
+    from net-tools, which Pridwen and current Fedora do not ship, because `ss` from iproute2
+    does the same job faster by reading socket tables straight from the kernel. The flags
+    are worth memorising as one phrase: `-t` TCP, `-u` UDP, `-l` listening only, `-n`
+    numeric ports instead of service names, `-p` the process that owns each socket. Only
+    root can see every process name, so `sudo ss` fills in the blanks for system services.
+    Ways forward:
+      1. `ss -tulnp`                    what is listening, TCP and UDP, with process names
+      2. `sudo ss -tulnp`               the same, but every process is named, not just yours
+      3. `ss -tn`                       established connections right now
+      4. `pridwen explain ss`           each flag spelled out
   man: [ss(8)]
   cooldown: 86400
   priority: 30
@@ -40,7 +58,20 @@
     exit: any
     probe: no_command:route
   hint: >-
-    `route` is not shipped. `ip route` prints the table and `ip route get 1.1.1.1` shows which path a packet would take.
+    `route` is not shipped; it came from net-tools. `ip route` prints the routing table, and `ip route get 1.1.1.1` shows exactly which interface and gateway a packet to that address would use.
+  why: |
+    The shell searched your PATH for `route` and found nothing, so it printed `command not
+    found`. The old `route` command belonged to net-tools, which Pridwen does not ship
+    because iproute2 replaced it years ago and the kernel's routing features outgrew it.
+    `ip route` shows the same table: each line is a rule, and the line beginning `default`
+    is the gateway used for anything not on your own network. `ip route get` asks the kernel
+    to resolve one destination, which settles which interface is really in use when more
+    than one is up.
+    Ways forward:
+      1. `ip route`                     the whole table; find the `default via` line
+      2. `ip route get 1.1.1.1`         which route, interface and source address one packet would use
+      3. `nmcli device status`          whether the interface is connected at all
+      4. `pridwen explain ip`           the `route` subcommand and its verbs
   man: [ip-route(8)]
   cooldown: 86400
   priority: 30
@@ -51,14 +82,19 @@
     command: '^ping\s+(-\S+\s+)*(?P<host>[^-\s]\S*)\s*$'
     exit: [2]
   hint: >-
-    Exit 2 from `ping` means the name did not resolve or there was no route. `resolvectl query {host}` tests DNS on its own; `ip route` shows whether you have a default route at all.
+    `ping` exited 2, which means it could not even send: the name {host} did not resolve or there is no route. `resolvectl query {host}` tests DNS alone; `ip route` shows whether you have a default route.
   why: |
-    ping separates "no answers" (exit 1) from "could not even send" (exit 2). Exit 2 is
-    almost always DNS or a missing route, so test those layers separately.
+    `ping` uses two different failure codes on purpose. Exit 1 means packets went out and
+    nothing came back. Exit 2 means it could not send at all, printing either `Name or
+    service not known` (the name {host} did not resolve) or `Network is unreachable` (no
+    route to that address). Those are separate layers, so test them separately. Pridwen
+    resolves names through systemd-resolved over DNS over TLS, and `resolvectl` talks to it
+    directly, which makes DNS easy to check in isolation.
     Ways forward:
-      1. `ping 1.1.1.1`                 if this works, the network is up and DNS is the problem
-      2. `resolvectl status`            which DNS servers this host is using (Pridwen uses DNS over TLS)
-      3. `nmcli device status`          is the interface connected
+      1. `ping -c 3 1.1.1.1`            an address, not a name; if this works the network is up and DNS is the problem
+      2. `resolvectl query {host}`      does the name resolve, and through which server
+      3. `resolvectl status`            which DNS servers this host uses and whether DNS over TLS is on
+      4. `nmcli device status`          is the interface connected at all
   man: [ping(8), resolvectl(1), nmcli(1)]
   cooldown: 3600
   priority: 8
@@ -69,7 +105,19 @@
     command: '^ping\s+(-\S+\s+)*(?P<host>[^-\s]\S*)\s*$'
     exit: [1]
   hint: >-
-    `ping` sent packets to {host} and got nothing back. Many hosts, including Pridwen's own drop zone, ignore ICMP; `curl -I` or `ss` against a real port tells you more.
+    `ping` sent packets to {host} and got nothing back, but that does not prove it is down. Many hosts, including Pridwen's own drop zone, ignore ICMP; test a real port with `curl -I` or `ss` instead.
+  why: |
+    The name resolved and a route existed, so `ping` sent its packets, but no reply arrived
+    within the wait, so it printed `100% packet loss` and exited 1. `ping` uses ICMP, a
+    small control protocol that many firewalls silently discard. Pridwen's own firewalld
+    default zone is `drop`, which throws away every unsolicited packet including ICMP echo,
+    so a Pridwen desktop does not answer pings either. A host that ignores ICMP can still
+    be serving web pages or SSH, so the honest test is a real port.
+    Ways forward:
+      1. `curl -I https://{host}`       ask for headers only; an answer proves the host and port are up
+      2. `curl -v telnet://{host}:22`   does a specific port answer at all
+      3. `ip route get {host}`          confirm which interface the packets are leaving by
+      4. `pridwen explain curl`         the `-I` and `-v` flags
   man: [ping(8), curl(1)]
   cooldown: 3600
   priority: 6
@@ -81,7 +129,20 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is in bind-utils, which the image does not carry. `resolvectl query name` asks systemd-resolved directly, and `getent hosts name` uses the same path as programs do.
+    `{cmd}` is in bind-utils, which the image does not carry. `resolvectl query name` asks systemd-resolved directly, and `getent hosts name` resolves the same way programs do.
+  why: |
+    The shell could not find `{cmd}`, so it exited 127 with `command not found`. `dig`,
+    `nslookup` and `host` come from bind-utils, a package Pridwen leaves out of the image
+    to keep it small, because systemd-resolved already answers the same questions. Pridwen
+    routes every DNS query through resolved over DNS over TLS, so `resolvectl` is the tool
+    that sees exactly what your programs see, including which server answered and whether
+    the transport was encrypted. If you want `dig` for its richer output, install it in a
+    Distrobox rather than on the host.
+    Ways forward:
+      1. `resolvectl query example.com`     the answer, the interface, and the transport used
+      2. `getent hosts example.com`         resolves through the standard library, as applications do
+      3. `resolvectl status`                the DNS servers per interface and the DNS over TLS setting
+      4. `distrobox enter` then `dnf install bind-utils`   `dig` in a container, not on the host
   man: [resolvectl(1), getent(1)]
   cooldown: 86400
   priority: 10
@@ -92,7 +153,20 @@
     command: '^ip\s+(link|addr|address|route)\s+(add|del|set|change|replace|flush)\b'
     not_sudo: true
   hint: >-
-    Changing addresses or routes needs root, and NetworkManager will put things back on the next reconnect. `nmcli connection modify` makes a change that sticks.
+    Changing addresses or routes needs root, so `ip` answered `Operation not permitted`. Even with sudo, NetworkManager puts its saved settings back on the next reconnect; `nmcli connection modify` makes a change that sticks.
+  why: |
+    Reading network state is open to everyone, but changing it alters what every process on
+    the machine sees, so the kernel refused with `RTNETLINK answers: Operation not
+    permitted`. There is a second problem `sudo` does not fix: on a desktop, NetworkManager
+    owns the configuration and reapplies its saved connection profile whenever the interface
+    reconnects, so a hand change with `ip` vanishes. Pridwen keeps the split simple on
+    purpose: read with `ip`, change with `nmcli`, because `nmcli` edits the saved profile
+    and the same commands work on a Rocky or RHEL server.
+    Ways forward:
+      1. `nmcli connection show`                          the saved profiles and which is active
+      2. `nmcli connection modify NAME ipv4.dns 1.1.1.1`  change a property in the saved profile
+      3. `nmcli connection up NAME`                       reapply it so the change takes effect
+      4. `sudo ip addr add 192.0.2.5/24 dev DEV`          a deliberately temporary test, gone at reconnect
   man: [nmcli(1), ip(8)]
   cooldown: 3600
   priority: 5
@@ -103,7 +177,20 @@
     command: '^nmcli\s+(con|connection|dev|device)\s+(up|down|modify|add|delete|connect|disconnect|reapply)\b'
     not_sudo: true
   hint: >-
-    From a desktop session polkit lets you manage your own connections, but system-wide ones need `sudo nmcli`. `nmcli connection show` lists them either way.
+    From your own desktop session polkit lets you manage your connections without sudo, but system-wide connections and remote sessions need `sudo nmcli`. `nmcli connection show` lists them either way.
+  why: |
+    `nmcli` asked NetworkManager to change a connection, and NetworkManager asked polkit, the
+    desktop's permission service, whether you are allowed. polkit trusts a person sitting at
+    the machine with their own connections, so from the desktop this usually works without
+    `sudo`. It refuses with `Insufficient privileges` for connections marked system-wide, for
+    some device operations, and for remote or text-only sessions, because those are exactly
+    the situations where an attacker with your password would try to reroute traffic.
+    Reading is always allowed.
+    Ways forward:
+      1. `nmcli connection show`                    list saved connections; the `DEVICE` column shows the active one
+      2. `sudo nmcli connection modify NAME ...`    the same change with root, which polkit always allows
+      3. `sudo nmcli connection up NAME`            reapply it
+      4. `pridwen explain nmcli`                    the `connection` and `device` verbs
   man: [nmcli(1)]
   cooldown: 3600
 - id: net-curl-resolve
@@ -113,7 +200,19 @@
     command: '^curl\s+'
     exit: [6]
   hint: >-
-    curl exit 6 means the host name did not resolve. `resolvectl query name` tests DNS by itself; a typo in the URL is the other usual cause.
+    curl exit 6 is `Could not resolve host`: the name did not turn into an address. A typo in the URL is the usual cause; `resolvectl query name` tests DNS by itself.
+  why: |
+    `curl` exits with a different number for each stage that can fail, and 6 means the very
+    first stage: it asked the system to resolve the host name and got nothing, so it printed
+    `curl: (6) Could not resolve host`. Nothing was sent to the network. On Pridwen names
+    go through systemd-resolved over DNS over TLS, so `resolvectl` can test that step alone
+    and show which server answered. Most of the time the cause is a misspelled name; the
+    rest of the time the network is down or DNS is not reachable.
+    Ways forward:
+      1. `resolvectl query NAME`        does the name resolve, and through which server
+      2. `ping -c 1 1.1.1.1`            is the network up at all, without involving DNS
+      3. `resolvectl status`            which DNS servers are configured and whether they answer
+      4. `pridwen explain curl`         what the exit codes mean
   man: [curl(1), resolvectl(1)]
   cooldown: 3600
   priority: 5
@@ -124,7 +223,19 @@
     command: '^curl\s+'
     exit: [7]
   hint: >-
-    curl exit 7 means the name resolved but nothing answered on that port. Check the service is listening (`ss -tlnp` on the target) and that its firewall allows the port.
+    curl exit 7 is `Failed to connect`: the name resolved but nothing answered on that port. Check the service is listening with `ss -tlnp` on the target, and that its firewall allows the port.
+  why: |
+    `curl` got past DNS, so the name is fine, and sent a connection request to the address
+    and port, but nothing accepted it, so it printed `curl: (7) Failed to connect`. Two
+    things cause that: no program is listening on that port on the target, or a firewall
+    between you and it dropped the packet. Pridwen's own firewall is in the `drop` zone, so
+    if the target is another Pridwen machine or a Range target you own, its firewall is the
+    first suspect. On the target, `ss -tlnp` shows what listens and on which address.
+    Ways forward:
+      1. `ss -tlnp`                              on the target: is anything listening on that port
+      2. `sudo firewall-cmd --list-all`          on the target: is the port or service allowed in the active zone
+      3. `curl -v URL`                           verbose: exactly which address and port it tried
+      4. `pridwen explain curl`                  the `-v` flag and the exit codes
   man: [curl(1), ss(8), firewall-cmd(1)]
   cooldown: 3600
   priority: 5
@@ -135,7 +246,20 @@
     command: '^curl\s+'
     exit: [60]
   hint: >-
-    curl exit 60 is a certificate it could not verify. Self-signed lab hosts do that; `curl -k` skips the check for a Range target, but never for a real site.
+    curl exit 60 is a certificate it could not verify. Self-signed lab hosts do that; `curl -k` skips the check for a Range target you own, but never for a real site, where it means something is wrong.
+  why: |
+    The connection worked and the server presented a TLS certificate, but `curl` could not
+    verify it against the system's trusted certificate authorities, so it stopped with
+    `curl: (60) SSL certificate problem`. That check is what makes HTTPS trustworthy: it
+    proves you reached the server you named and not an impostor in between. A Range target
+    or a home lab with a self-signed certificate fails it honestly, and `-k` (insecure) skips
+    the check for that case only. On a real site the same error means a wrong clock, a
+    missing certificate chain, or an attacker, and `-k` would hide it.
+    Ways forward:
+      1. `curl -v URL`                  verbose: which certificate was presented and why it failed
+      2. `curl -k URL`                  skip verification, only for a Range target you own
+      3. `date`                         a wrong system clock makes every certificate look expired
+      4. `pridwen explain curl`         the `-k` and `-v` flags
   man: [curl(1)]
   cooldown: 3600
   priority: 5
@@ -147,7 +271,19 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is not in the image. `curl -v telnet://host:port` tests whether a port answers, and `ss -tlnp` shows what is listening locally.
+    `{cmd}` is not in the image. `curl -v telnet://host:port` tests whether a port answers, and `ss -tlnp` shows what is listening locally. For real port-testing tools, use a Distrobox or a Range target.
+  why: |
+    The shell could not find `{cmd}`, so it exited 127 with `command not found`. Pridwen
+    leaves `telnet` and the netcat family out of the host image on purpose: they are
+    general-purpose connection tools that attackers reach for first, and the host is meant
+    to stay a hardened desktop. `curl` is present and can open a raw TCP connection with the
+    `telnet://` scheme, which answers the usual question of whether a port is open. Tools
+    for the attack-tier lessons belong in a Distrobox or on a Range target you own.
+    Ways forward:
+      1. `curl -v telnet://HOST:PORT`   connect to one port; `Connected to` means it is open
+      2. `ss -tlnp`                     what this machine is listening on
+      3. `distrobox enter` then `dnf install nmap-ncat`   `nc` inside a container, not on the host
+      4. `pridwen explain curl`         the `-v` flag
   man: [curl(1), ss(8)]
   cooldown: 86400
   priority: 10
@@ -159,7 +295,19 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is not shipped, but `tracepath host` from iputils does the same walk without root.
+    `{cmd}` is not shipped, but `tracepath host` from iputils does the same hop-by-hop walk without root, and `ip route get host` shows the first hop.
+  why: |
+    The shell could not find `{cmd}` and exited 127 with `command not found`. `traceroute`
+    and `mtr` are separate packages Pridwen does not carry in the image, but the same
+    question, which routers a packet passes through on its way to a host, is answered by
+    `tracepath`, which ships with the `ping` package (iputils). It sends packets with an
+    increasing time-to-live so each router along the path reveals itself, and it needs no
+    root. Routers that ignore those probes show up as `no reply`, which is normal.
+    Ways forward:
+      1. `tracepath HOST`               each hop on the way, with its round-trip time
+      2. `ip route get HOST`            the first hop only: gateway and interface
+      3. `distrobox enter` then `dnf install mtr`   `mtr` inside a container if you want its live view
+      4. `pridwen explain tracepath`    what the columns mean
   man: [tracepath(8)]
   cooldown: 86400
   priority: 10
@@ -171,7 +319,19 @@
     exit: [127]
     probe: no_command:wget
   hint: >-
-    `wget` is not in the image. `curl -LO url` downloads a file under its own name, and `curl -L -o name url` picks the name.
+    `wget` is not in the image, but `curl` is. `curl -LO url` downloads a file under its own name, and `curl -L -o name url` picks the name; `-L` follows redirects.
+  why: |
+    The shell searched your PATH for `wget` and found nothing, so it exited 127 with
+    `command not found`. Pridwen ships one download tool, `curl`, and leaves `wget` out to
+    keep the image small; nearly every guide that says `wget` can be done with `curl`. The
+    flags to know: `-O` saves under the remote file's own name, `-o NAME` chooses the name,
+    and `-L` follows redirects, which most download links use. Without `-O` or `-o`, `curl`
+    prints the file to the terminal instead of saving it.
+    Ways forward:
+      1. `curl -LO URL`                 download, following redirects, keeping the remote name
+      2. `curl -L -o NAME URL`          download to a name you choose
+      3. `curl -I URL`                  headers only: check the file exists and its size before downloading
+      4. `pridwen explain curl`         the `-L`, `-O` and `-o` flags
   man: [curl(1)]
   cooldown: 86400
   priority: 10

@@ -7,7 +7,23 @@
   when:
     command: '^(sudo\s+)?(reboot|poweroff|shutdown)\b'
   hint: >-
-    A reboot clears memory, running processes and open sockets, which on a Range host under investigation are your evidence. Capture `ps`, `ss` and the journal first.
+    You asked for a reboot or shutdown. It clears memory, running processes and open sockets, which on a host under investigation are the evidence; capture `ps`, `ss`, sessions and the journal first (`pridwen learn ir-02`).
+  why: |
+    You ran a reboot or shutdown command. On a healthy desktop that is fine, and
+    Pridwen's Coach only mentions it because the Incident response node is about
+    the one moment it is not: a host you suspect has been tampered with. A reboot
+    erases everything that lives only in memory, which is the running process
+    list, every open network connection, and every logged-in session, and it
+    also lets any persistence an intruder set up start cleanly. The disk keeps
+    its files, but the story of what was running and who it was talking to is
+    gone. Incident response captures the volatile state first, in files with a
+    timestamp, and only then decides whether to isolate, stop or restart.
+    Ways forward:
+      1. `ts=$(date +%F-%H%M); mkdir -p {home}/ir`                     one stamp for every capture
+      2. `ps auxww > {home}/ir/$ts-ps.txt`                              every process, full command lines
+      3. `sudo ss -tanp > {home}/ir/$ts-ss.txt`                         every TCP socket with its process
+      4. `journalctl --since -2h > {home}/ir/$ts-journal.txt`           the last two hours of the journal
+      5. `sudo firewall-cmd --panic-on`                                 isolate instead of rebooting; `--panic-off` restores
   man: [journalctl(1), ss(8)]
   cooldown: 3600
   priority: 15

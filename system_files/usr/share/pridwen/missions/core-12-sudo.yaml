@@ -6,47 +6,103 @@ required: true
 minutes: 10
 target: host
 brief: |
-  There is no root password on this machine. When you need to act as root you
-  ask with your own password, and the system writes down who asked, from
-  where, and for what. That is the deal sudo makes, and it is the reason a
-  team can share a server without sharing a secret.
+  There is no root password on this machine. root is the account that may
+  do anything, and on Pridwen nobody logs in as it. When you need to act as
+  root you ask `sudo`, prove it is you with your own password, and the
+  system writes down who asked, from where, and for what. That is the deal
+  sudo makes, and it is the reason a team can share a server without
+  sharing a secret: every privileged command has a name attached. Who may
+  ask is written in `/etc/sudoers`, and on Pridwen one rule there grants it
+  to every member of the `wheel` group, the group the welcome wizard put
+  your account in.
 
-  See the deal from both sides. Ask sudo what it would let you run and read
-  the rule that grants it, then write down the name of the group that rule is
-  tied to. Run one harmless command through sudo and go and find the record it
-  left in the journal; you may read the system journal because you are in
-  wheel. Finally, forget your cached credentials on purpose. For a few minutes
-  after each use, sudo does not ask again, which is convenient at a keyboard
-  and a risk at one you walked away from.
+  See the deal from both sides. `sudo -l` asks sudo what it would let you
+  run and prints the rule that grants it; read that rule and write down the
+  name of the group it is tied to. Run one harmless command through sudo
+  and go and find the record it left in the journal, the system log; you
+  may read the system journal because you are in `wheel`. Finally, forget
+  your cached credentials on purpose. For a few minutes after each use sudo
+  does not ask for the password again, which is convenient at a keyboard
+  and a risk at one you walked away from, and `sudo -k` ends that grace
+  period at once.
+
+  On a job, sudo's log is how an incident gets reconstructed and how an
+  auditor checks that nobody shares root. Done looks like three answer
+  files and a sudo that asks for your password again. The checker reads the
+  files for the `(ALL) ALL` rule, the word `wheel` and a `COMMAND=` log
+  line, then runs `sudo -n true` itself and expects it to fail with exit 1,
+  which means sudo would have had to ask for a password.
 steps:
-  - Save what sudo lets you run in `~/pridwen/answers/sudo-l.txt` and read the rule it comes from.
-  - Write the name of the group that grants sudo on Pridwen in `~/pridwen/answers/sudo-group.txt`.
-  - Run one harmless command through sudo, find its record in the journal, and save that line in `~/pridwen/answers/sudo-log.txt`.
-  - Drop your cached credentials so the next sudo asks for a password again.
+  - >-
+    Ask `sudo` what it lets you run and save the answer in
+    `~/pridwen/answers/sudo-l.txt`. Expect a password prompt, then a line
+    ending `(ALL) ALL`.
+  - >-
+    Write the name of the group that rule grants sudo to, on Pridwen, in
+    `~/pridwen/answers/sudo-group.txt`. Expect one word.
+  - >-
+    Run one harmless command through `sudo`, then find its record in the
+    journal with `journalctl` and save those lines in
+    `~/pridwen/answers/sudo-log.txt`. Expect a line with
+    `USER=root ; COMMAND=`.
+  - >-
+    Drop your cached credentials with `sudo -k`, then try a `sudo` that is
+    not allowed to prompt. Expect it to refuse with `a password is required`.
 hints:
-  - "`sudo -l` lists your rules; `(ALL) ALL` is the wheel rule from `/etc/sudoers`."
-  - "`sudo true` does nothing except leave a record; `journalctl _COMM=sudo -n 3` finds it."
-  - "`sudo -k` forgets the timestamp; afterwards `sudo -n true` fails with exit 1 because it is not allowed to prompt."
+  - >-
+    `sudo -l` (`-l` lists) prints your rules; `(ALL) ALL` is the wheel rule
+    from `/etc/sudoers`, `%wheel ALL=(ALL) ALL`, where the `%` marks a group
+    name. `sudo true` does nothing except leave a record, and
+    `journalctl _COMM=sudo` finds every line the sudo program wrote; `-n 3`
+    keeps the last three.
+  - >-
+    `sudo -k` (`-k` kills the cached timestamp) forgets that you recently
+    typed your password. `sudo -n true` (`-n` non-interactive) may only
+    succeed without prompting, so after `-k` it fails with exit 1 and
+    `sudo: a password is required`, which is exactly the proof you want.
+    `echo word > file` writes a one-word answer.
+  - >-
+    `sudo -l > ~/pridwen/answers/sudo-l.txt`, then
+    `echo wheel > ~/pridwen/answers/sudo-group.txt`, then `sudo true`, then
+    `journalctl _COMM=sudo -n 3 > ~/pridwen/answers/sudo-log.txt`, then
+    `sudo -k` and `sudo -n true; echo $?`, which should print the refusal
+    and then 1.
 checks:
   - id: sudo-l
     type: path_contains
     path: "{home}/pridwen/answers/sudo-l.txt"
     regex: '\(ALL\)\s+ALL'
-    fail: "`sudo-l.txt` should show your rule, `(ALL) ALL`; if `sudo -l` refused you, you are not in wheel."
+    fail: >-
+      `sudo-l.txt` is {actual} and does not show the rule `(ALL) ALL`.
+      `sudo -l > ~/pridwen/answers/sudo-l.txt` saves your rules; if `sudo -l`
+      refused you with `is not in the sudoers file`, your account is not in
+      `wheel` (the users mission covers the fix).
   - id: sudo-group
     type: path_contains
     path: "{home}/pridwen/answers/sudo-group.txt"
     regex: '^wheel\s*$'
-    fail: "`sudo-group.txt` should hold the group name from the sudoers rule, on its own line."
+    fail: >-
+      `sudo-group.txt` is {actual} and does not hold the group name from the
+      sudoers rule on its own line. The rule is `%wheel ALL=(ALL) ALL`, so
+      `echo wheel > ~/pridwen/answers/sudo-group.txt` writes it.
   - id: sudo-log
     type: path_contains
     path: "{home}/pridwen/answers/sudo-log.txt"
     regex: 'COMMAND='
-    fail: "`sudo-log.txt` should hold a journal line from sudo, the one with `USER=root ; COMMAND=`."
+    fail: >-
+      `sudo-log.txt` is {actual} and holds no journal line with `COMMAND=`.
+      Run `sudo true` first, then
+      `journalctl _COMM=sudo -n 3 > ~/pridwen/answers/sudo-log.txt` saves the
+      last three sudo records, one of which has
+      `USER=root ; COMMAND=/usr/bin/true`.
   - id: no-cache
     type: cmd_exit
     cmd: ["sudo", "-n", "true"]
     exit: 1
-    fail: "`sudo -n true` exited {actual}; 1 means sudo would have to prompt, which is what you want after `sudo -k`. 0 means credentials are still cached or a rule skips the password."
+    fail: >-
+      `sudo -n true` exited {actual}; 1 means sudo would have had to prompt,
+      which is what you want after `sudo -k`. 0 means credentials are still
+      cached or a rule skips the password: run `sudo -k` in the terminal you
+      used, then check again.
 cleanup: |
   rm -f ~/pridwen/answers/sudo-l.txt ~/pridwen/answers/sudo-group.txt ~/pridwen/answers/sudo-log.txt

@@ -8,15 +8,20 @@
     command: '^ssh\s+.*\b(localhost|127\.0\.0\.1|::1)\b'
     exit: [255]
   hint: >-
-    sshd is off by default on Pridwen, so nothing is listening on 22. `sudo systemctl enable --now sshd` starts it, and the drop zone still needs `sudo firewall-cmd --add-service=ssh` before anyone else can reach it.
+    Nothing is listening on port 22 because sshd is off by default on Pridwen; that is the design, not a fault. `sudo systemctl enable --now sshd` starts it, and the drop zone still needs `sudo firewall-cmd --add-service=ssh` before other machines can reach it.
   why: |
-    A laptop rarely needs to accept logins, so the daemon is installed but disabled, and
-    the firewall would drop port 22 even if it were running. Turning it on is two
-    deliberate steps, and turning it off again is `sudo systemctl disable --now sshd`.
+    `Connection refused` on `ssh localhost` means the kernel found no program listening
+    on port 22, and `ssh` exits 255 when the connection itself fails. Pridwen ships the
+    SSH server installed but disabled: a laptop rarely needs to accept logins, and an
+    open port 22 is the first thing every scanner on every network tries, so the safe
+    default is to listen for nothing until you decide otherwise. Turning it on is two
+    deliberate steps, the daemon and then the firewall, so that accepting logins is
+    always a choice you made. Turning it off again is `sudo systemctl disable --now sshd`.
     Ways forward:
-      1. `sudo systemctl enable --now sshd`                      listen
-      2. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`
-      3. `ssh localhost`                                          test from this machine
+      1. `sudo systemctl enable --now sshd`                      start it now and at every boot
+      2. `ssh localhost`                                          test from this machine (loopback is always allowed)
+      3. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`   let other machines in
+      4. `ss -tlnp | grep :22`                                    confirm something is listening
   man: [sshd(8), systemctl(1), firewall-cmd(1)]
   cooldown: 3600
   priority: 20
@@ -27,15 +32,21 @@
     command: '^ssh\s+(-\S+\s+)*(\S+@)?(?P<host>[\w.-]+)'
     exit: [255]
   hint: >-
-    Exit 255 is ssh itself failing: refused, timed out, host key changed, or no accepted key. `ssh -v {host}` narrates the attempt; refused usually means sshd is off or the firewall is dropping 22 on {host}.
+    Exit 255 is ssh itself failing to connect: refused, timed out, host key changed, or no accepted key. `ssh -v {host}` narrates the attempt; refused usually means sshd is off or the firewall is dropping port 22 on {host}.
   why: |
-    ssh returns the remote command's exit code on success and 255 when the connection
-    itself failed. The reason is printed above, but `-v` shows which step it died on:
-    DNS, TCP connect, key exchange, or authentication.
+    `ssh` returns the remote command's exit status when the session worked, and 255 when
+    the connection itself failed, so 255 always means "we never got a shell". The
+    reason is in the line printed above: `Connection refused` is nothing listening on
+    port 22, `Connection timed out` is a firewall dropping packets (Pridwen's own drop
+    zone does exactly this to others), `REMOTE HOST IDENTIFICATION HAS CHANGED` is a
+    host key that no longer matches `~/.ssh/known_hosts`, and `Permission denied
+    (publickey)` is a server that accepts keys only and does not have yours. `-v` shows
+    which step it died on: name lookup, TCP connect, key exchange, or authentication.
     Ways forward:
-      1. `ssh -v user@{host}`                          watch the handshake
-      2. `curl -v telnet://{host}:22`                  is the port open at all
-      3. `ssh-keygen -R {host}`                        if the host key changed and you know why
+      1. `ssh -v user@{host}`                          watch the handshake step by step
+      2. `curl -v telnet://{host}:22`                  is port 22 reachable at all
+      3. `ssh-keygen -R {host}`                        clear an old host key, only after a rebuild you know about
+      4. `ssh-copy-id user@{host}`                     install your key if it was Permission denied
   man: [ssh(1), sshd(8)]
   cooldown: 3600
   priority: -1
@@ -46,7 +57,21 @@
     command: '^ssh-keygen\s*(-t\s+\S+)?.*$'
     exit: [0]
   hint: >-
-    The private key stays in `~/.ssh` and never leaves this machine; the `.pub` half goes to servers. `ssh-copy-id user@host` installs it, after which the password prompt disappears.
+    You now have a key pair in `~/.ssh`: the private half stays on this machine and never leaves it, the `.pub` half goes to servers. `ssh-copy-id user@host` installs it, after which the password prompt disappears.
+  why: |
+    `ssh-keygen` wrote two files: `~/.ssh/id_ed25519`, the private key, readable by you
+    alone, and `~/.ssh/id_ed25519.pub`, the public key, which is safe to hand to anyone.
+    A server that has your public key in its `~/.ssh/authorized_keys` can check that you
+    hold the matching private key without the private key ever crossing the network,
+    which is why keys beat passwords: nothing guessable is sent, and a script trying a
+    million passwords gets nowhere. The passphrase you chose encrypts the private key on
+    disk so a stolen laptop does not hand out your servers; the GNOME keyring remembers
+    it for the session.
+    Ways forward:
+      1. `ssh-copy-id user@host`                       install the public key on a server
+      2. `cat ~/.ssh/id_ed25519.pub`                   the one line you would paste elsewhere
+      3. `ls -l ~/.ssh`                                private key must be -rw------- (600)
+      4. `pridwen learn ssh-01`                        keys, known hosts, and copying files
   man: [ssh-keygen(1), ssh-copy-id(1)]
   cooldown: 604800
   priority: -10
@@ -57,7 +82,19 @@
     command: '^ssh-keygen\s+.*-t\s+(rsa|dsa|ecdsa)\b'
     exit: any
   hint: >-
-    `ed25519` keys are shorter, faster and the current default: `ssh-keygen -t ed25519`. RSA still works, but there is no reason to pick it for a new key.
+    That key type is older than it needs to be: `ed25519` keys are shorter, faster and the current default, so `ssh-keygen -t ed25519` is the one to make. RSA still works; DSA is refused by modern servers.
+  why: |
+    `-t` picks the key algorithm. `ed25519` is the modern choice: a 256-bit key that is
+    as strong as a 3072-bit RSA key, faster to use, and short enough to read in one
+    line, and every current OpenSSH server accepts it. RSA keys still work when they are
+    at least 3072 bits, so an existing one is not a problem, but there is no reason to
+    make a new one. DSA has been removed from OpenSSH and servers refuse it; `ecdsa`
+    depends on curves that some people distrust. A new key costs nothing to make, so
+    make the current kind.
+    Ways forward:
+      1. `ssh-keygen -t ed25519 -C "{user}@{host}"`   the current key type, with a comment
+      2. `ssh-keygen -l -f ~/.ssh/id_rsa.pub`         see an existing key's size and type
+      3. `ssh-copy-id -i ~/.ssh/id_ed25519.pub user@host`   install the new key on a server
   man: [ssh-keygen(1)]
   cooldown: 86400
   priority: 5
@@ -67,7 +104,21 @@
   when:
     command: '^ssh-copy-id\s+'
   hint: >-
-    `ssh-copy-id` needs one password login to install the key, so the target must still allow password auth, and `~/.ssh/id_ed25519.pub` must exist. `ssh-keygen -t ed25519` if it does not.
+    If that failed, `ssh-copy-id` needs two things: a public key in `~/.ssh` to send, and one password login on the target to deliver it. `ssh-keygen -t ed25519` if the key is missing; the server must still allow passwords for the first copy.
+  why: |
+    `ssh-copy-id` logs in to the server once, with whatever authentication it already
+    accepts (usually your password), and appends your public key to that user's
+    `~/.ssh/authorized_keys`. It fails when there is no `.pub` file in `~/.ssh` to send
+    (`ERROR: No identities found`), when the server refuses passwords and does not have
+    your key yet (`Permission denied (publickey)`), or when the connection itself is
+    refused because sshd is off or the firewall drops port 22. The second case is the
+    keys-only lockout the hardening lesson warns about: the key has to go in by another
+    route, such as the server's console.
+    Ways forward:
+      1. `ls ~/.ssh/*.pub`                             is there a public key to send
+      2. `ssh-keygen -t ed25519`                       make one if not
+      3. `ssh -v user@host`                            see which step the login fails at
+      4. `ssh-copy-id -i ~/.ssh/id_ed25519.pub user@host`   name the key explicitly
   man: [ssh-copy-id(1)]
   cooldown: 3600
 - id: ssh-identity-file
@@ -77,7 +128,21 @@
     command: '^ssh\s+.*-i\s+(?P<path>\S+)'
     exit: [255]
   hint: >-
-    A private key that is readable by others is refused ("UNPROTECTED PRIVATE KEY FILE"). `chmod 600 {path}` and `chmod 700 ~/.ssh` fix the usual case.
+    If ssh said "UNPROTECTED PRIVATE KEY FILE", the key at `{path}` is readable by others and ssh refuses to use it. `chmod 600 {path}` and `chmod 700 ~/.ssh` fix the usual case.
+  why: |
+    `-i` names the private key to use. A private key is the proof that you are you, so
+    `ssh` checks its permissions before using it and refuses any key that other users
+    could read, printing `Permissions 0644 for '{path}' are too open` and `This
+    private key will be ignored`. The rule exists because a readable key is a copied
+    key. Keys copied from another machine, unpacked from an archive, or created in a
+    shared directory often arrive with loose modes. The directory matters too: `~/.ssh`
+    must be 700, and on the server side `authorized_keys` must be 600 or sshd ignores
+    it.
+    Ways forward:
+      1. `chmod 600 {path}`                            owner read and write only
+      2. `chmod 700 ~/.ssh`                            the directory, owner only
+      3. `ls -l {path}`                                confirm -rw-------
+      4. `ssh -v -i {path} user@host`                  retry and watch which key is offered
   man: [ssh(1), chmod(1)]
   cooldown: 3600
   priority: 3
@@ -88,7 +153,21 @@
     command: '^ssh-add\b'
     exit: [2]
   hint: >-
-    No agent is reachable from this shell. In a GNOME session gnome-keyring provides one; in a bare shell `eval $(ssh-agent)` starts one for this terminal.
+    No agent is reachable from this shell, so `ssh-add` had nowhere to put the key. In a GNOME session gnome-keyring provides one; in a bare shell `eval $(ssh-agent)` starts one for this terminal.
+  why: |
+    An SSH agent is a background program that holds your unlocked private keys so you
+    type the passphrase once and every `ssh` after that asks the agent instead. `ssh-add`
+    talks to it through a socket named in the `SSH_AUTH_SOCK` environment variable, and
+    exit 2 with `Could not open a connection to your authentication agent` means that
+    variable is empty or points nowhere. Inside a GNOME session on Pridwen, gnome-keyring
+    provides the agent and sets the variable; an SSH session into a Range host, a
+    Distrobox, or a terminal started from a bare TTY may not inherit it, so you start
+    one for that shell.
+    Ways forward:
+      1. `echo $SSH_AUTH_SOCK`                         is an agent socket set at all
+      2. `eval $(ssh-agent)`                           start an agent for this terminal
+      3. `ssh-add ~/.ssh/id_ed25519`                   then load the key
+      4. `ssh-add -l`                                  list the keys the agent holds
   man: [ssh-add(1), ssh-agent(1)]
   cooldown: 3600
   priority: 5
@@ -99,7 +178,19 @@
     command: '^scp\s+(?!-r)(?P<src>[^-\s]\S*)\s+\S+:'
     probe: is_dir:{src}
   hint: >-
-    `scp` needs `-r` for a directory. `rsync -a {src}/ user@host:dest/` does the same and only sends what changed next time.
+    `{src}` is a directory and `scp` copies only files unless you give it `-r` (recursive). `rsync -a {src}/ user@host:dest/` does the same job and only sends what changed next time.
+  why: |
+    `scp` copies files over SSH and, like `cp`, skips a directory with the message
+    `omitting directory` unless `-r` tells it to recurse. `rsync` is the better tool for
+    a tree: `-a` (archive) keeps permissions, times and links, and on every later run it
+    compares both sides and sends only the files that changed, so a second run of the
+    same command finishes in a blink. Both use your SSH key and the same host trust.
+    The trailing slash on the rsync source means "the contents of" the directory rather
+    than the directory itself.
+    Ways forward:
+      1. `scp -r {src} user@host:dest/`                copy the directory tree once
+      2. `rsync -a {src}/ user@host:dest/`             copy it, and only changes next time
+      3. `rsync -an --stats {src}/ user@host:dest/`    dry run: show what would be sent
   man: [scp(1), rsync(1)]
   cooldown: 3600
   priority: 8
@@ -110,7 +201,21 @@
     command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/ssh/sshd_config)\b'
     exit: [0]
   hint: >-
-    Fedora reads `/etc/ssh/sshd_config.d/*.conf` first, so a small file there overrides the main one and survives updates. `sudo sshd -t` checks syntax before `sudo systemctl restart sshd`.
+    Fedora reads `/etc/ssh/sshd_config.d/*.conf` before the main file and the first setting wins, so a small file there overrides the default and survives updates. `sudo sshd -t` checks the syntax before `sudo systemctl restart sshd`.
+  why: |
+    The main file `/etc/ssh/sshd_config` belongs to the image, and its first line is an
+    `Include /etc/ssh/sshd_config.d/*.conf`. sshd takes the first value it sees for any
+    setting, so a drop-in with a low number like `10-pridwen.conf` wins over both
+    Fedora's `50-redhat.conf` and the main file. Editing the main file works today, but
+    a drop-in is cleaner: it is a file you own, it lists exactly what you changed, and
+    Pridwen's three-way `/etc` merge keeps it across every `bootc upgrade`. Whichever
+    you edit, validate before restarting: a typo in a keyword makes sshd refuse to
+    start, and then nobody can log in.
+    Ways forward:
+      1. `sudo tee /etc/ssh/sshd_config.d/10-pridwen.conf`   write settings to a drop-in instead
+      2. `sudo sshd -t`                                       test the configuration; silence means valid
+      3. `sudo systemctl restart sshd`                        apply it
+      4. `sudo sshd -T | grep -i permitrootlogin`             read the setting sshd actually uses
   man: [sshd_config(5), sshd(8)]
   cooldown: 3600
   priority: 5
@@ -121,7 +226,20 @@
     command: '^sudo\s+systemctl\s+(enable|start)\s+(--now\s+)?sshd\b'
     exit: [0]
   hint: >-
-    sshd is now listening, and the drop zone still blocks 22 from other machines until `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`. `pridwen learn ssh-03` covers keys-only login.
+    sshd is listening now, but the drop zone still discards port 22 from other machines until `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`. `pridwen learn ssh-03` covers keys-only login before you leave it running.
+  why: |
+    Starting sshd opens a listening socket on port 22, and `ssh localhost` will work
+    because loopback is always allowed. From any other machine the packets hit Pridwen's
+    drop zone and vanish, so the service is running but not reachable, which is the
+    most common reason a freshly started service "does not work". The service and the
+    firewall are two separate decisions on purpose: each is a thing you can read back
+    and undo. Once other machines can reach it, sshd is the one door the network can
+    knock on, so the next step is to make it keys-only and refuse root.
+    Ways forward:
+      1. `ss -tlnp | grep :22`                                   confirm it is listening
+      2. `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`   let others in
+      3. `ssh-copy-id {user}@{host}` from the other machine     install a key before turning passwords off
+      4. `pridwen learn ssh-03`                                 PermitRootLogin no, PasswordAuthentication no
   man: [sshd(8), firewall-cmd(1)]
   cooldown: 86400
   priority: 10
@@ -132,7 +250,21 @@
     command: 'PermitRootLogin\s+(yes|without-password)'
     exit: any
   hint: >-
-    Root over SSH is the account every scanner tries first, and Pridwen keeps root locked anyway. Log in as yourself and use `sudo`; `PermitRootLogin no` is the setting.
+    That allows root to log in over SSH, the account every scanner tries first, and Pridwen keeps root locked anyway. Log in as yourself and use `sudo`; `PermitRootLogin no` is the setting to write.
+  why: |
+    `PermitRootLogin yes` lets the root account be a login target over SSH; the older
+    `without-password` value (now called `prohibit-password`) still allows it with a key.
+    Root is the one username every attacker already knows, so it collects most of the
+    guessing attempts on any internet-facing host, and a successful guess is total.
+    Pridwen locks the root account and gives the admin user `sudo` through `wheel`, so
+    root over SSH would gain nothing except a second door. `PermitRootLogin no` is
+    defence in depth: it holds even if someone later sets a root password. Every sudo
+    use is logged with your name, which root logins would hide.
+    Ways forward:
+      1. `sudo tee /etc/ssh/sshd_config.d/10-pridwen.conf`   with `PermitRootLogin no` in it
+      2. `sudo sshd -t && sudo systemctl restart sshd`        validate, then apply
+      3. `sudo sshd -T | grep permitrootlogin`                confirm the running value is no
+      4. `ssh {user}@host` then `sudo -i`                     the way to do root work remotely
   man: [sshd_config(5)]
   cooldown: 3600
   priority: 40
@@ -143,7 +275,21 @@
     command: 'PasswordAuthentication\s+no'
     exit: [0]
   hint: >-
-    Keys only is the right target, so before restarting sshd make sure your key is already in `~/.ssh/authorized_keys` on that host and keep the current session open while you test a new one.
+    Keys only is the right target, and it also removes your fallback: before restarting sshd make sure your key is already in `~/.ssh/authorized_keys` on that host, and keep the current session open while you test a new one.
+  why: |
+    `PasswordAuthentication no` makes sshd refuse passwords, so a key is the only way
+    in. That removes the whole category of password guessing, which is why it is the
+    single most effective sshd setting, and it is what every hardening standard asks
+    for. The cost is that a missing key means a locked door: if your public key is not
+    in that user's `~/.ssh/authorized_keys` on the host, or the file's permissions are
+    loose (it must be 600, the `.ssh` directory 700), the next login fails with
+    `Permission denied (publickey)`. Test from a second terminal while the first is
+    still open, so a mistake can be fixed from the session that still works.
+    Ways forward:
+      1. `ssh user@host 'echo ok'` from a second terminal   prove the key works before you rely on it
+      2. `sudo sshd -t`                                     validate before the restart
+      3. `sudo systemctl restart sshd`                      apply, keeping the first session open
+      4. `cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`   add the key by hand if the test fails
   man: [sshd_config(5)]
   cooldown: 86400
   priority: 5

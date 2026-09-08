@@ -8,7 +8,18 @@
     command: '^curl\s+.*\shttp'
     exit: [22]
   hint: >-
-    curl exit 22 means the server returned 400 or above, which `-v` or the write-out format for the http code will show exactly. A run of 404s in a log is often someone scanning paths.
+    curl exited 22 because you passed `-f` and the server answered with a status of 400 or above; drop `-f` and add `-sI` to read the exact status line. A run of 404s in an access log is often someone scanning paths.
+  why: |
+    curl returns exit 22 only when you asked it to fail on HTTP errors with `-f`
+    (or `--fail`) and the server replied with a status of 400 or above, such as 404
+    not found or 403 forbidden. The request reached the server and got a real
+    answer; nothing crashed. Pridwen surfaces this because the status code is the
+    first thing both an attacker and a defender read, and lab work lives or dies on
+    reading it correctly. Keep this aimed at a Range target you own.
+    Ways forward:
+      1. `curl -sI http://range-web/`      read the status line and headers
+      2. `curl -sI URL | head -n 1`        print just the status line
+      3. `pridwen explain curl`            what `-f`, `-s`, and `-I` each do
   man: [curl(1)]
   cooldown: 3600
   priority: 5
@@ -19,7 +30,18 @@
     command: '^(curl|wget|http|https?://)\b.*((\.\./){2,}|%2e%2e%2f|(\?|&)[^ ]*=[^ ]*/etc/passwd)'
     exit: any
   hint: >-
-    That path-traversal shape belongs in a lab, aimed at a Range target you own. As a defender, the same string in an access log is the signature to alert on.
+    That path-traversal shape (`../` climbing toward a system file) belongs only in a lab, aimed at a Range target you own. As a defender, the same string in an access log is the signature to alert on.
+  why: |
+    The command carries a path-traversal pattern: repeated `../` or its encoded form
+    `%2e%2e%2f`, or a parameter pointing at `/etc/passwd`, all attempts to climb out
+    of a web server's folder to read files it should never serve. Pridwen flags it so
+    the lesson is unmistakable: this is defensive education, run only against a Range
+    target you own, never a system you do not control. The real payoff is learning to
+    recognise the same string as an alert in your own logs.
+    Ways forward:
+      1. `pridwen learn web-03`            read this pattern from the defender's side
+      2. `pridwen enter rocky`             move the attempt onto a lab host you own
+      3. `journalctl -u nginx | grep '\.\./'`  find the signature in an access log
   man: [curl(1)]
   cooldown: 3600
   priority: 10

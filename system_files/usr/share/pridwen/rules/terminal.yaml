@@ -9,17 +9,23 @@
     exit: [127]
     probe: no_command:{name}
   hint: >-
-    `{name}` is not on your PATH. On Pridwen, software usually arrives as a Flatpak
-    (`flatpak search {name}`), lives inside a Distrobox, or is layered with `rpm-ostree install`.
+    The shell searched every directory on your PATH and found no program called `{name}` (exit 127).
+    Check the spelling first; if it is right, the tool is not installed on the host, and `pridwen why` shows where software comes from on Pridwen.
   why: |
-    Exit 127 is the shell saying it searched every directory in $PATH and found no
-    executable called `{name}`. The base image is read-only, so the usual reflex
-    (`dnf install`) does not apply here.
+    Exit 127 is the shell saying it looked in every directory listed in your PATH variable
+    and found nothing executable named `{name}`. Most of the time that is a typo. When the
+    name is right, the program is simply not part of the Pridwen image. Pridwen is
+    image-based: `/usr` is read-only and identical on every machine, so the usual reflex
+    of `dnf install` does not work here. Desktop apps come from Flathub as Flatpaks,
+    command-line tools go into a Distrobox (a throwaway container with a normal package
+    manager), and only as a last resort is a package layered onto the image with
+    `rpm-ostree install`, which slows every future update.
     Ways forward:
-      1. `flatpak search {name}`            desktop apps come from Flathub
-      2. `distrobox enter`                  a mutable Fedora or Rocky box for CLI tools
-      3. `rpm-ostree search {name}`         then `rpm-ostree install`, active after reboot
-      4. `type {name}`                      check whether it is an alias or function you expected
+      1. `type {name}`                      is it an alias or function you expected, or a typo
+      2. `flatpak search {name}`            desktop apps come from Flathub
+      3. `distrobox enter`                  a mutable Fedora or Rocky box for CLI tools
+      4. `rpm-ostree search {name}`         then `rpm-ostree install`, active after a reboot
+      5. `pridwen explain {name}`           what the command is, if Pridwen knows it
   man: [bash(1), rpm-ostree(1), flatpak(1)]
   cooldown: 900
   priority: -5
@@ -30,13 +36,21 @@
     command: '.'
     exit: [130]
   hint: >-
-    Exit 130 means you stopped it with Ctrl-C, which sends SIGINT. Nothing went wrong on the system's side.
+    Exit 130 means you pressed Ctrl-C, which sent the program signal 2 (SIGINT) and stopped it.
+    Nothing went wrong on the system's side; run it again if you stopped it by accident.
   why: |
-    Exit codes above 128 mean "killed by signal number (code - 128)". 130 - 128 = 2,
-    and signal 2 is SIGINT, the interrupt Ctrl-C sends to the foreground process.
+    Every command returns an exit code, and codes above 128 mean "stopped by a signal".
+    A signal is a short message the kernel delivers to a running program. Subtract 128
+    to get the signal number: 130 minus 128 is 2, and signal 2 is SIGINT, the interrupt
+    that Ctrl-C sends to whatever is running in the foreground. The program did not fail
+    on its own; you asked it to stop, and the shell records that honestly so that scripts
+    can tell "interrupted" apart from "broken". Pridwen's Coach reports it for the same
+    reason, so you learn to read the number rather than guess.
     Ways forward:
-      1. Run it again if you stopped it by accident
-      2. `kill -l`     lists every signal number and name
+      1. Run it again              if you stopped it by accident
+      2. `echo $?`                 read the exit code of the last command yourself
+      3. `kill -l`                 list every signal number and name
+      4. `pridwen learn term-02`   exit codes and what the common ones mean
   man: [signal(7), bash(1)]
   cooldown: 86400
   priority: -10
@@ -47,16 +61,21 @@
     command: '^(?P<name>\S+)'
     exit: [126]
   hint: >-
-    Exit 126 means the file was found but could not be run, usually because it lacks the
-    execute bit or is a directory. `ls -l {name}` shows which.
+    Exit 126 means the shell found `{name}` but the kernel refused to run it, usually because the execute bit is off or it is a directory.
+    `ls -l {name}` shows which; `chmod +x {name}` fixes the first case.
   why: |
-    The shell found `{name}` but the kernel refused to execute it. That is either a
-    missing execute permission, a directory, or a file the SELinux policy will not let
-    this user run.
+    The shell located `{name}`, so this is not "command not found". It then asked the kernel
+    to execute it and was refused. The mode of every file has an execute bit for the owner,
+    the group and everyone else, and a file with none of them set cannot be run even by the
+    person who wrote it; that is how Linux keeps a text file from being launched by mistake.
+    A directory gives the same code because a directory is not a program. On Pridwen a
+    third cause is possible: an SELinux label that forbids this user from running the file,
+    which `ls -lZ` reveals and `pridwen why` translates.
     Ways forward:
-      1. `chmod +x {name}`         if it is your script
-      2. `bash {name}`             run it through the interpreter without changing the mode
-      3. `ls -lZ {name}`           check owner, mode and SELinux label
+      1. `ls -l {name}`            check the mode and whether it is a directory
+      2. `chmod +x {name}`         add the execute bit if it is your script
+      3. `bash {name}`             run it through the interpreter without changing the mode
+      4. `ls -lZ {name}`           see the SELinux label if the mode looks right
   man: [chmod(1), bash(1)]
   cooldown: 3600
   priority: -3
@@ -67,8 +86,20 @@
     command: '^(?P<name>(ls|grep|cp|mv|rm|mkdir|cat|find|tar|sed|awk|cut|sort))\b'
     exit: [2]
   hint: >-
-    For GNU tools exit 2 usually means a usage problem or a path that does not exist.
-    `{name} --help` shows the expected shape.
+    `{name}` exited 2, which for the GNU tools usually means a usage problem or a path that does not exist.
+    Read the message above it; `{name} --help` shows the expected shape and `pridwen explain {name}` names the flags.
+  why: |
+    The GNU core tools use exit code 2 for "serious trouble": a path that could not be
+    opened, a flag they do not recognise, or arguments in the wrong order. The error line
+    printed just above the prompt says which, and it is worth reading slowly, because it
+    names the exact file or option that was the problem. Pridwen shows exit codes so that
+    you learn to trust them: 1 is usually "no match" or a minor failure, 2 is "you asked
+    for something I could not do". Scripts you write later will branch on the same numbers.
+    Ways forward:
+      1. `{name} --help`               the accepted flags and argument order
+      2. `pridwen explain {name}`      the flags annotated in plain English
+      3. `ls -l <path>`                confirm the path you gave really exists
+      4. `man {name}`                  the full manual page, `q` to leave
   cooldown: 7200
   priority: -5
 - id: term-cd-missing
@@ -78,14 +109,20 @@
     command: '^cd\s+(?P<path>[^-\s]\S*)\s*$'
     probe: missing:{path}
   hint: >-
-    There is no `{path}` from here. `ls` shows what this directory holds, and `pwd` says where "here" is.
+    There is no `{path}` inside the directory you are standing in, so `cd` had nowhere to go.
+    `pwd` says where "here" is, `ls` shows what is here, and Tab completion avoids the retype.
   why: |
-    `cd` resolves the name relative to your current directory unless it starts with `/`,
-    `~`, or `.`. A name that exists somewhere else is still "No such file or directory" here.
+    `cd` changes the working directory, the place your shell is standing. A name that does
+    not start with `/`, `~` or `.` is read relative to that place, so `cd {path}` means
+    "the `{path}` inside the current directory". If the directory you want exists somewhere
+    else, it is still "No such file or directory" from here. The usual causes are a typo,
+    a different working directory than you think, or a name that was moved. Pridwen keeps
+    the prompt showing your location for exactly this reason.
     Ways forward:
-      1. `pwd; ls`                   see where you are and what is around you
-      2. `cd /full/path`             use an absolute path
-      3. `cd ~/Doc` then Tab         let completion finish the name
+      1. `pwd; ls`                     see where you are and what is around you
+      2. `cd /full/path`               use an absolute path, which works from anywhere
+      3. `cd {home}/Doc` then Tab      let completion finish the name for you
+      4. `find {home} -type d -name '{path}'`   search your home for a directory of that name
   man: [bash(1)]
   cooldown: 1800
   priority: 10
@@ -96,8 +133,20 @@
     command: '^cd\s+(?P<path>[^-\s]\S*)\s*$'
     probe: not is_dir:{path}
   hint: >-
-    `{path}` is a file, and `cd` only enters directories. To read it, try `less {path}`;
-    to go where it lives, `cd $(dirname {path})`.
+    `{path}` exists but it is a file, and `cd` only enters directories.
+    To read it, try `less {path}` (press `q` to leave); to stand where it lives, `cd $(dirname {path})`.
+  why: |
+    The filesystem is a tree of directories, and `cd` moves your shell from one directory
+    to another. A file is a leaf, not a place, so the shell answers "Not a directory".
+    This is a common slip when a name looks like a folder, or when Tab completion filled
+    in a file because it was the only match. Nothing was changed. To look inside the file
+    use a reader; to move next to it, strip the file name off the path and `cd` to the
+    rest, which is what `dirname` computes.
+    Ways forward:
+      1. `less {path}`                 read it one page at a time, `q` to quit
+      2. `cd $(dirname {path})`        go to the directory that contains it
+      3. `ls -l {path}`                confirm the type: `-` is a file, `d` a directory
+      4. `file {path}`                 what kind of file it is
   man: [bash(1), dirname(1)]
   cooldown: 1800
   priority: 5
@@ -108,15 +157,20 @@
     command: '^[A-Za-z_]\w*\s+=\s*\S'
     exit: [127]
   hint: >-
-    The shell read that as a command named after your variable. Assignments take no spaces
-    around the equals sign: `NAME=value`.
+    The shell read that as a command named after your variable, with `=` as its first argument.
+    Assignments take no spaces around the equals sign: `NAME=value`, then `echo "$NAME"` to read it back.
   why: |
-    `FOO = bar` is the command `FOO` with arguments `=` and `bar`. The shell only treats
-    `word=value` as an assignment when the word, the `=` and the value are one token.
+    Before running a line the shell splits it into words at spaces. `FOO = bar` is three
+    words, so the shell treats `FOO` as a command name and `=` and `bar` as its arguments,
+    then reports "command not found" because no program called `FOO` exists. It only treats
+    a word as an assignment when the name, the `=` and the value are joined into one token
+    with no spaces. This is different from most programming languages, and everyone trips
+    on it once; the Coach is here so it happens once.
     Ways forward:
-      1. `FOO=bar`               set it for this shell
-      2. `export FOO=bar`        also pass it to programs you start
-      3. `echo "$FOO"`           read it back, in double quotes
+      1. `FOO=bar`                     set it for this shell
+      2. `export FOO=bar`              also pass it to programs you start from here
+      3. `echo "$FOO"`                 read it back, in double quotes
+      4. `pridwen learn term-03`       variables, quoting and expansion
   man: [bash(1)]
   cooldown: 3600
   priority: 20
@@ -126,7 +180,20 @@
   when:
     command: '^\$[A-Za-z_]\w*='
   hint: >-
-    Use the dollar sign to read a variable, not to set it. `NAME=value` sets, `$NAME` reads.
+    A dollar sign reads a variable; it does not set one, so the shell expanded the name first and tried to run the result.
+    `NAME=value` sets, `$NAME` reads.
+  why: |
+    The shell replaces `$NAME` with the variable's current value before it does anything
+    else. If the variable was empty, the line became `=value` and the shell looked for a
+    command with that name; if it was set, the line became the old value followed by
+    `=value`. Either way nothing was assigned. The rule is one-directional: a bare name
+    on the left of `=` sets, and a name with `$` in front reads. Pridwen points this out
+    early because scripts silently misbehave when the two are mixed up.
+    Ways forward:
+      1. `NAME=value`                  set the variable
+      2. `echo "$NAME"`                read it back
+      3. `unset NAME`                  remove it
+      4. `pridwen learn term-03`       variables, quoting and expansion
   man: [bash(1)]
   cooldown: 3600
   priority: 20
@@ -137,16 +204,21 @@
     command: '''[^'']*\$[A-Za-z_{][^'']*'''
     exit: any
   hint: >-
-    Inside single quotes `$` is just a character, so the variable did not expand.
+    Inside single quotes `$` is just a character, so that variable was not expanded and the program saw its literal name.
     Double quotes expand variables and still keep the words together.
   why: |
-    Single quotes mean "exactly these characters". Double quotes mean "these characters,
-    but expand `$var`, `$(cmd)` and backslash escapes". Unquoted means "expand, then split
-    on whitespace and match globs".
+    Quoting tells the shell how much rewriting to do before the command runs. Single
+    quotes mean "exactly these characters, change nothing", so `'$HOME'` is the five
+    characters `$HOME`. Double quotes mean "expand `$var`, `$(cmd)` and backslash escapes,
+    but keep the result as one word". No quotes at all means "expand, then split on
+    whitespace and match filename patterns". Single quotes are the right tool for text a
+    program must receive untouched, like a `grep` pattern; double quotes are the right
+    tool for anything holding a variable or a path.
     Ways forward:
-      1. `echo "$HOME"`          expands, keeps spaces
-      2. `echo '$HOME'`          prints the literal text
-      3. `echo "It's"`           put an apostrophe inside double quotes
+      1. `echo "$HOME"`                expands, keeps spaces together
+      2. `echo '$HOME'`                prints the literal text
+      3. `echo "It's"`                 put an apostrophe inside double quotes
+      4. `pridwen learn term-03`       the three kinds of quoting side by side
   man: [bash(1)]
   cooldown: 86400
   priority: 5
@@ -156,8 +228,19 @@
   when:
     command: '["'']~/'
   hint: >-
-    A tilde inside quotes stays a literal tilde, so the path pointed at a directory named `~`.
-    Write `~/dir` unquoted, or `"$HOME/dir"`.
+    A tilde inside quotes stays a literal tilde, so that path pointed at a directory actually named `~`, which does not exist.
+    Write `~/dir` unquoted, or `"$HOME/dir"` when you need quotes.
+  why: |
+    The shell turns `~` into your home directory, `{home}`, only when the tilde is unquoted
+    and at the start of a word. Inside either kind of quotes it is left alone, and the
+    program receives a path beginning with a literal tilde, which names a directory called
+    `~` inside the current one. The fix is to keep the tilde outside the quotes, or to use
+    the `HOME` variable, which double quotes do expand. The same rule applies inside
+    scripts and configuration files that the shell reads.
+    Ways forward:
+      1. `ls ~/Documents`              tilde unquoted, expanded by the shell
+      2. `ls "$HOME/My Documents"`     quotes needed for the space, variable instead of tilde
+      3. `echo ~`                      see what the tilde becomes
   man: [bash(1)]
   cooldown: 3600
   priority: 8
@@ -168,7 +251,20 @@
     command: '^man\s+(?P<name>[A-Za-z0-9_.+-]+)\s*$'
     exit: [16]
   hint: >-
-    No manual page for `{name}` here. Try `{name} --help`, `pridwen explain {name}`, or `apropos {name}` to search by topic.
+    There is no manual page for `{name}` on this system, which happens for shell builtins and for tools that are not installed.
+    Try `{name} --help`, `pridwen explain {name}`, or `apropos {name}` to search by topic.
+  why: |
+    `man` looks for a page named `{name}` in the manual directories under `/usr/share/man`
+    and exits 16 when none exists. That can mean the program is not installed on the
+    Pridwen image, or that `{name}` is a shell builtin like `cd` or `export`, which are
+    documented inside `bash(1)` rather than on their own page. Most programs also answer
+    `--help` with a short summary, and Pridwen's `explain` annotates the flags of the
+    commands it knows in plain English.
+    Ways forward:
+      1. `{name} --help`               the program's own summary
+      2. `pridwen explain {name}`      flags in plain English, if Pridwen knows the command
+      3. `help {name}`                 for bash builtins such as `cd`, `export`, `read`
+      4. `apropos {name}`              search every manual page by topic
   man: [man(1), apropos(1)]
   cooldown: 3600
 - id: term-which-missing
@@ -177,6 +273,19 @@
   when:
     command: '^(which|type|command\s+-v)\s+(?P<name>\S+)'
   hint: >-
-    `{name}` is not on PATH. `echo $PATH` lists where the shell looks; Flatpaks and Distrobox tools are not on it unless exported.
+    `{name}` is not on your PATH, the list of directories the shell searches for commands.
+    `echo $PATH` lists them; Flatpaks and Distrobox tools are not on it unless exported.
+  why: |
+    `which`, `type` and `command -v` all answer the same question: if I type `{name}`,
+    which file will run? They search the directories in the PATH variable in order and
+    report the first match, or nothing. On Pridwen the answer is often nothing even for
+    software you have installed, because Flatpak apps live in their own sandboxes and
+    Distrobox tools live inside a container. Neither is on the host PATH until you export
+    it, which is deliberate: the host image stays small and identical on every machine.
+    Ways forward:
+      1. `echo $PATH`                              the directories the shell searches
+      2. `flatpak list`                            apps installed as Flatpaks
+      3. `distrobox-export --bin /usr/bin/{name}`  put a Distrobox tool on the host PATH
+      4. `flatpak run <app id>`                    run a Flatpak from the terminal
   man: [bash(1), distrobox-export(1)]
   cooldown: 3600

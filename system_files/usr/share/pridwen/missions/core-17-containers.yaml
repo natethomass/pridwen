@@ -7,48 +7,118 @@ minutes: 15
 target: host
 brief: |
   You want to try a tool without letting it anywhere near your system. On
-  Pridwen the answer is a container: a second, smaller Linux that runs as your
-  user, sees only what you hand it, and can be thrown away when you are done.
-  Podman runs them without a daemon and without root, which is why it is here
-  instead of Docker.
+  Pridwen the answer is a container: a second, smaller Linux that runs as
+  your user, sees only what you hand it, and can be thrown away when you are
+  done. A container starts from an image, a ready-made filesystem
+  downloaded from a registry (a server that stores images, such as
+  `registry.fedoraproject.org`); the running copy is the container, and
+  you can start many from one image. Podman runs them without a daemon (no
+  always-on background service) and without root, which is why it is here
+  instead of Docker: a container you run is just processes owned by you.
 
-  Pull Fedora's minimal image and confirm it arrived. Run it once, in a
-  container with a name you chose, asking it to print its own `/etc/os-release`
-  so you can see it is a different Fedora from the one you are sitting on. Do
+  Pull Fedora's minimal image and confirm it arrived with `podman images`.
+  Run it once, in a container with a name you chose, asking it to print its
+  own `/etc/os-release`, the file every Linux uses to say what it is, so
+  you can see it is a different Fedora from the one you are sitting on. Do
   not clean it up yet: a stopped container stays listed, and reading that
-  listing is how you will find the one that is hogging space next month. Then
-  look at the map that makes rootless work, the one that says what root inside
-  the container becomes out here. It is not you, and it is not root.
+  listing with `podman ps -a` is how you will find the one that is hogging
+  space next month. Then look at the map that makes rootless work. Inside
+  the container there is a root user, uid 0, and the kernel maps it to a
+  number out here; `podman unshare` opens the same user namespace so you
+  can read that map in `/proc/self/uid_map`. Root inside is not you, and it
+  is not root: it is the first of a range of spare uids reserved for your
+  account.
+
+  On a job, containers are how services ship and how you test something
+  risky in an afternoon, and the uid map is the answer to "is a container
+  escape root on the host". Done looks like the image pulled, a stopped
+  container named `pridwen-core`, and two answer files. The checker runs
+  `podman images` and `podman ps -a` itself, reads `container-os.txt` for
+  an `ID=fedora` line and `uid-map.txt` for the map's second line.
 steps:
-  - Pull `registry.fedoraproject.org/fedora-minimal` and confirm it is in your image list.
-  - Run it once as a container named `pridwen-core` that prints its `/etc/os-release`, and save that output in `~/pridwen/answers/container-os.txt`.
-  - Leave the stopped container in place and find it in the full container listing.
-  - Save the uid map of your rootless namespace in `~/pridwen/answers/uid-map.txt` and work out what root inside the container maps to.
+  - >-
+    Pull `registry.fedoraproject.org/fedora-minimal` with `podman pull` and
+    confirm it with `podman images`. Expect a download of a few layers, then
+    one row naming the image with its size.
+  - >-
+    Run it once with `podman run` as a container named `pridwen-core` that
+    prints its `/etc/os-release`, and save that output in
+    `~/pridwen/answers/container-os.txt`. Expect lines like
+    `NAME="Fedora Linux"` and `VARIANT="Container Image"`.
+  - >-
+    Leave the stopped container in place and find it with `podman ps -a`.
+    Expect a row with `Exited (0)` and the name `pridwen-core`.
+  - >-
+    Save the uid map of your rootless namespace, read through
+    `podman unshare`, in `~/pridwen/answers/uid-map.txt`, and work out what
+    root inside the container maps to. Expect two lines: `0` to your uid,
+    then `1` to a number above 100000.
 hints:
-  - "`podman pull registry.fedoraproject.org/fedora-minimal:latest`, then `podman images`."
-  - "`podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release > ~/pridwen/answers/container-os.txt`; without `--rm` the container stays listed in `podman ps -a`."
-  - "`podman unshare cat /proc/self/uid_map` shows the map; its second line starts with 1 and points at your subordinate uid range."
+  - >-
+    `podman pull registry.fedoraproject.org/fedora-minimal:latest` downloads
+    the image (`:latest` is the tag, the version label), then
+    `podman images` lists what is stored locally.
+    `podman run --name NAME IMAGE COMMAND` starts a container from an image
+    and runs one command in it; `--name` chooses the name instead of a
+    random one. `podman ps -a` lists containers, `-a` (all) including
+    stopped ones.
+  - >-
+    `podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release`
+    prints the container's own os-release, and `>` after it sends the output
+    into a file. Without `--rm` the container stays listed in
+    `podman ps -a`. `podman unshare COMMAND` runs a command inside your user
+    namespace, so `podman unshare cat /proc/self/uid_map` shows the map: its
+    first line maps container uid 0 to your uid and its second maps uid 1
+    onwards to your subordinate range.
+  - >-
+    `podman pull registry.fedoraproject.org/fedora-minimal:latest`, then
+    `podman images`, then
+    `podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release > ~/pridwen/answers/container-os.txt`,
+    then `podman ps -a`, then
+    `podman unshare cat /proc/self/uid_map > ~/pridwen/answers/uid-map.txt`.
 checks:
   - id: image
     type: cmd_output
     cmd: ["podman", "images"]
     regex: 'registry\.fedoraproject\.org/fedora-minimal'
-    fail: "`podman images` does not list fedora-minimal; the pull may have failed or used another registry."
+    fail: >-
+      `podman images` (first line: {actual}) does not list
+      `registry.fedoraproject.org/fedora-minimal`; the pull may have failed
+      or come from another registry.
+      `podman pull registry.fedoraproject.org/fedora-minimal:latest` fetches
+      it.
   - id: container
     type: cmd_output
     cmd: ["podman", "ps", "-a"]
     regex: 'fedora-minimal.*\bpridwen-core\b'
-    fail: "`podman ps -a` shows no container named `pridwen-core` from fedora-minimal; `--rm` would have removed it, and a different name does not count."
+    fail: >-
+      `podman ps -a` (first line: {actual}) shows no container named
+      `pridwen-core` made from fedora-minimal; `--rm` would have removed it,
+      and a different name does not count.
+      `podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release`
+      creates it (`podman rm pridwen-core` first if podman says the name is
+      already in use).
   - id: os-release
     type: path_contains
     path: "{home}/pridwen/answers/container-os.txt"
     regex: '^ID="?fedora"?\s*$'
-    fail: "`container-os.txt` should be the container's `/etc/os-release`, with an `ID=fedora` line."
+    fail: >-
+      `container-os.txt` is {actual} and has no `ID=fedora` line, so it is
+      not the container's `/etc/os-release`.
+      `podman run --name pridwen-core registry.fedoraproject.org/fedora-minimal cat /etc/os-release > ~/pridwen/answers/container-os.txt`
+      writes it (`podman rm pridwen-core` first if podman says the name is
+      already in use).
   - id: uid-map
     type: path_contains
     path: "{home}/pridwen/answers/uid-map.txt"
     regex: '^\s*1\s+\d{4,}\s+\d+'
-    fail: "`uid-map.txt` should hold the uid map from inside `podman unshare`; its second line maps container uid 1 onto your subordinate range."
+    fail: >-
+      `uid-map.txt` is {actual} and does not hold the uid map read from
+      inside `podman unshare`, whose second line maps container uid 1 onto
+      your subordinate range.
+      `podman unshare cat /proc/self/uid_map > ~/pridwen/answers/uid-map.txt`
+      writes it; a plain `cat /proc/self/uid_map` shows only the host's
+      one-line identity map.
 cleanup: |
   podman rm -f pridwen-core >/dev/null 2>&1 || true
   podman rmi registry.fedoraproject.org/fedora-minimal >/dev/null 2>&1 || true

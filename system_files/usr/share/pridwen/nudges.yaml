@@ -9,7 +9,7 @@
     command: '^sudo\b'
     threshold: 10
   title: Ten sudos in
-  body: You have run sudo ten times. Want to see what it actually does and why only wheel may use it.
+  body: You have run sudo ten times so far. This lesson shows what sudo actually does under the hood and why only the wheel group is allowed to use it on Pridwen.
 
 - id: systemctl-fifteen
   node: services
@@ -18,7 +18,7 @@
     command: '^(sudo\s+)?systemctl\b'
     threshold: 15
   title: You live in systemctl now
-  body: Fifteen systemctl calls. The difference between enabled and started trips up almost everyone.
+  body: Fifteen systemctl calls have gone by. This lesson pins down the difference between a unit that is enabled and one that is merely started, which trips up almost everyone at first.
 
 - id: journalctl-ten
   node: logging
@@ -27,7 +27,7 @@
     command: '^journalctl\b'
     threshold: 10
   title: Reading the journal
-  body: Ten journalctl runs. A few filters turn a wall of text into an answer.
+  body: You have run journalctl ten times. This lesson shows the handful of filters that turn a wall of log text into the single answer you were actually looking for.
 
 - id: podman-five
   node: containers
@@ -36,7 +36,7 @@
     command: '^podman\b'
     threshold: 5
   title: Getting comfortable with Podman
-  body: Five podman commands. Here is why Pridwen runs them rootless and daemonless.
+  body: You have run five podman commands. This lesson explains why Pridwen runs containers rootless and daemonless, and what that design choice buys you in safety.
 
 - id: rpm-ostree-five
   node: packages
@@ -45,7 +45,7 @@
     command: '^(sudo\s+)?rpm-ostree\b'
     threshold: 5
   title: Layering on an image
-  body: Five rpm-ostree calls. Deployments and rollback are what make that safe.
+  body: You have reached for rpm-ostree five times. This lesson explains deployments and rollback, the mechanisms that make changing an image-based system safe to undo.
 
 - id: dnf-attempts
   node: packages
@@ -54,7 +54,7 @@
     command: '^(sudo\s+)?(dnf|yum|apt|apt-get)\b'
     threshold: 3
   title: There is no dnf here
-  body: You have reached for dnf a few times. On an image-based system the tools are Flatpak, Distrobox and rpm-ostree.
+  body: You have reached for dnf a few times, and it is not the tool on an image-based host. This lesson shows the three that are, Flatpak, Distrobox, and rpm-ostree, and when to use each.
 
 - id: firewall-five
   node: firewall
@@ -63,7 +63,7 @@
     command: '^sudo\s+firewall-cmd\b'
     threshold: 5
   title: Shaping the firewall
-  body: Five firewall-cmd calls. Runtime versus permanent is the part worth pinning down.
+  body: You have run firewall-cmd five times. This lesson pins down the difference between a runtime change and a permanent one, which is the part of the firewall worth getting right.
 
 - id: ssh-attempts
   node: ssh
@@ -72,7 +72,7 @@
     command: '^ssh\s'
     threshold: 5
   title: Reaching other machines
-  body: Five ssh attempts. Keys, and turning sshd on with intent, make this smoother.
+  body: You have made five ssh attempts. This lesson shows how keys, and turning sshd on with intent, make reaching other machines both smoother and much safer.
 
 - id: git-twenty
   node: scripting
@@ -81,7 +81,7 @@
     command: '^git\b'
     threshold: 20
   title: You use git a lot
-  body: Twenty git commands. A short detour into what a commit really is can save you later.
+  body: Twenty git commands have gone by. This lesson takes a short detour into what a commit really is, which saves you the next time your history gets tangled.
 
 - id: chmod-777-repeat
   node: permissions
@@ -90,7 +90,7 @@
     command: '^(sudo\s+)?chmod\s+(-R\s+)?(777|0777|a\+rwx)\b'
     threshold: 3
   title: The 777 habit
-  body: Three wide-open chmods. There is almost always a narrower fix, and it is worth learning once.
+  body: You have opened files wide with chmod 777 three times. This lesson shows the narrower permission that almost always fits instead, and why it is worth learning once.
   repeat: 604800
 
 - id: selinux-first-denial
@@ -98,21 +98,21 @@
   lesson: selinux-01
   event: selinux_denial
   title: SELinux just said no
-  body: Something was blocked by SELinux. Want it translated into plain English.
+  body: Something on your system was just blocked by SELinux. This lesson translates the denial into plain English and shows the safe way to let the action through.
 
 - id: bootc-staged
   node: packages
   lesson: pkg-03
   event: bootc_staged
   title: An update is staged
-  body: A new Pridwen image is ready for the next boot. See what changed before you reboot.
+  body: A new Pridwen image is downloaded and ready for the next boot. This lesson shows how to see exactly what changed before you reboot into it.
 
 - id: range-incident
   node: incident-response
   lesson: ir-01
   event: range_incident
   title: Something is happening on the Range
-  body: A scenario host just did something worth noticing. Want to walk through the first hour.
+  body: A scenario host on the Range just did something worth noticing. This lesson walks you through the first hour of an incident, one deliberate step at a time.
 
 - id: history-repeat-fail
   node: terminal
@@ -121,4 +121,4 @@
     command: '.'
     threshold: 50
   title: Getting your footing
-  body: Fifty commands in. If exit codes are still a mystery, this is a good moment to decode them.
+  body: You are fifty commands into the terminal now. If exit codes are still a mystery, this lesson decodes them so you can tell success from failure at a glance.

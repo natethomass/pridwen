@@ -6,48 +6,101 @@ required: true
 minutes: 10
 target: host
 brief: |
-  Pridwen is installed, you are logged in, and the Coach is watching the shell
-  for the first time. Before anything else you need a place to keep your work,
-  and proof that you know where the shell puts you when Ptyxis opens.
+  Pridwen is installed, you are logged in, and the Coach is watching your
+  shell for the first time. The shell is the program that reads what you type
+  and runs it; on Pridwen it is bash, and the terminal app that holds it is
+  called Ptyxis, which sits in the dock. Before you learn any real tool you
+  need two things: a place to keep your work, and proof that you know where
+  the shell puts you and who it thinks you are when a new tab opens.
 
-  Everything the Academy asks you to build lives under `~/pridwen`. Create it
-  now, with an `answers` directory inside for the small facts each mission asks
-  you to write down. Then record three things about this session: the absolute
-  path of your home directory, your login name as the shell reports it, and the
-  exit status the shell gives when you ask it to run a program that does not
-  exist. That last number is the one you will meet most often in your first
-  week, so it is worth knowing by heart.
+  Everything the Academy asks you to build lives under `~/pridwen`. The `~`
+  is shorthand for your home directory, `{home}`, the one directory on this
+  machine that is yours to fill. Create it now, with an `answers` directory
+  inside for the small facts each mission asks you to write down. Then record
+  three things about this session: the absolute path of your home directory
+  (absolute means it starts from `/`, the root of the whole filesystem, not
+  from wherever you happen to be), your login name as the shell reports it,
+  and the exit status the shell gives when you ask it to run a program that
+  does not exist. An exit status is a number every command leaves behind when
+  it finishes: 0 means it worked, anything else names a kind of failure. Bash
+  uses 127 for "I could not find that command", and it is the number you will
+  meet most often in your first week, so it is worth knowing by heart.
+
+  On a job this is the first minute of every shift: open a terminal on a
+  machine you have never touched and know within three commands where you
+  are, who you are, and whether the last thing you ran worked. Done looks
+  like `~/pridwen/answers` holding three small text files with one line in
+  each. The checker reads those three files and looks for your home path,
+  your login name, and the number 127, each on a line of its own.
 steps:
-  - Open Ptyxis and work out where you are and who you are.
-  - Create `~/pridwen` and `~/pridwen/answers`.
-  - Save the absolute path of your home directory in `~/pridwen/answers/pwd.txt`.
-  - Save your login name in `~/pridwen/answers/whoami.txt`.
-  - Run a command that does not exist, then save the exit status it produced in `~/pridwen/answers/exit-code.txt`.
+  - >-
+    Open Ptyxis from the dock and ask the shell where you are and who you are.
+    Expect your home directory as a path starting with `/`, and your login
+    name, `{user}`.
+  - >-
+    Create `~/pridwen` and `~/pridwen/answers` with `mkdir`. Expect no output
+    at all; silence is how the shell says a command worked.
+  - >-
+    Send the output of `pwd`, run from your home directory, into
+    `~/pridwen/answers/pwd.txt`. Expect the file to hold one line, `{home}`.
+  - >-
+    Send the output of `whoami` into `~/pridwen/answers/whoami.txt`. Expect
+    one line holding `{user}`.
+  - >-
+    Run a command name that does not exist, read the exit status the shell
+    kept, and send that number into `~/pridwen/answers/exit-code.txt`. Expect
+    `command not found` on screen and the number 127 in the file.
 hints:
-  - "`pwd` prints where you are, `whoami` prints who you are, and `>` sends a command's output into a file."
-  - "`mkdir -p ~/pridwen/answers` makes both directories in one go."
-  - "Right after a command fails, `echo $?` prints its exit status; a name the shell cannot find gives 127."
+  - >-
+    Three commands answer three questions: `pwd` prints the working directory
+    (where you are), `whoami` prints your login name (who you are), and
+    `echo $?` prints the exit status of the command that ran just before it.
+    The `>` symbol after a command sends its output into a file instead of
+    the screen, creating the file if it is missing and replacing it if not.
+  - >-
+    `mkdir -p ~/pridwen/answers` makes both directories in one go; `-p` means
+    "make the parents too" and also stays quiet if a directory already
+    exists. `cd` with no argument takes you home, so `pwd` there prints
+    `{home}`. Type a made-up name such as `frobnicate`, see
+    `bash: frobnicate: command not found`, and run `echo $?` immediately,
+    because `$?` only remembers the most recent command.
+  - >-
+    The exact lines, in order: `mkdir -p ~/pridwen/answers`, then `cd`, then
+    `pwd > ~/pridwen/answers/pwd.txt`, then
+    `whoami > ~/pridwen/answers/whoami.txt`, then `frobnicate`, then
+    `echo $? > ~/pridwen/answers/exit-code.txt`. Read each file back with
+    `cat ~/pridwen/answers/pwd.txt` and so on.
 checks:
   - id: workspace
     type: path_type
     path: "{home}/pridwen/answers"
     kind: dir
-    fail: "`~/pridwen/answers` is {actual}; it should be a directory."
+    fail: >-
+      `~/pridwen/answers` is {actual}; it should be a directory.
+      `mkdir -p ~/pridwen/answers` creates it and its parent in one go.
   - id: pwd
     type: path_contains
     path: "{home}/pridwen/answers/pwd.txt"
     regex: '^{home}\s*$'
-    fail: "`pwd.txt` should hold the absolute path of your home directory, the line `pwd` prints from there."
+    fail: >-
+      `pwd.txt` is {actual} and does not hold the absolute path of your home
+      directory, `{home}`, on a line of its own. Run `cd` to go home, then
+      `pwd > ~/pridwen/answers/pwd.txt`.
   - id: whoami
     type: path_contains
     path: "{home}/pridwen/answers/whoami.txt"
     regex: '^{user}\s*$'
-    fail: "`whoami.txt` should hold your login name on its own line."
+    fail: >-
+      `whoami.txt` is {actual} and does not hold your login name, `{user}`, on
+      a line of its own. `whoami > ~/pridwen/answers/whoami.txt` writes it.
   - id: exit-code
     type: path_contains
     path: "{home}/pridwen/answers/exit-code.txt"
     regex: '^127\s*$'
-    fail: "`exit-code.txt` should hold 127, the status bash gives when it cannot find a command."
+    fail: >-
+      `exit-code.txt` is {actual} and does not hold 127, the status bash gives
+      when it cannot find a command. Run a made-up name such as `frobnicate`,
+      then straight away `echo $? > ~/pridwen/answers/exit-code.txt`.
 cleanup: |
   rm -f ~/pridwen/answers/pwd.txt ~/pridwen/answers/whoami.txt ~/pridwen/answers/exit-code.txt
   rmdir --ignore-fail-on-non-empty ~/pridwen/answers ~/pridwen 2>/dev/null || true

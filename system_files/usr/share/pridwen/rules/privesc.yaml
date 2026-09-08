@@ -8,15 +8,18 @@
     command: '^find\s+.*-perm\s+.*(4000|/[u]?[+]?s|u\+s)'
     exit: any
   hint: >-
-    That is the classic hunt for setuid binaries, which run as their owner regardless of who calls them. As a defender, `find / -perm -4000 -type f 2>/dev/null` is your inventory to keep short.
+    That is the classic hunt for setuid binaries, which run as their owner no matter who calls them, so a flaw in one is a path to root. As a defender, keep `find / -perm -4000 -type f 2>/dev/null` short and known.
   why: |
-    A setuid-root binary is a program any user can run that becomes root while it runs. A
-    bug in one is a path to root, so the fewer there are, the smaller the risk. This is a
-    defensive audit; only run the offensive follow-ups on a Range host.
+    You searched for programs with the setuid bit set. A setuid-root binary is one
+    any user can run that becomes root while it runs, so a bug in one is a direct
+    path to root. That is why the defender's aim is a short, known list, and why
+    Pridwen's read-only `/usr` freezes the setuid set across upgrades so a new entry
+    would stand out. This audit is safe on your own host; only plant and climb such a
+    weakness on a Range target you own.
     Ways forward:
-      1. `find / -perm -4000 -type f 2>/dev/null`      list them
-      2. compare against a known-good list for the image
-      3. remove the bit from anything that does not need it, on a lab
+      1. `find / -perm -4000 -type f 2>/dev/null`   list every setuid file
+      2. `pridwen learn privesc-01`                 compare against a known-good set
+      3. `pridwen enter rocky`                       do the offensive follow-up on a lab
   man: [find(1), capabilities(7)]
   cooldown: 3600
   priority: 5
@@ -27,7 +30,18 @@
     command: '^find\s+.*-perm\s+.*(0002|o\+w).*(/etc/systemd|/usr/lib/systemd)'
     exit: any
   hint: >-
-    A world-writable unit file or a directory holding one lets any user change what root runs at boot. On a Range host this is the finding; the fix is correct ownership and mode on `/etc/systemd`.
+    A world-writable unit file, or a directory holding one, lets any user change what root runs at boot. On a Range host that is the finding; the fix is correct ownership and a tight mode on `/etc/systemd`.
+  why: |
+    You searched the systemd directories for world-writable files. If a unit file
+    root reads, or a directory it lives in, can be changed by anyone, then anyone can
+    decide what root runs at boot, which is a full escalation. Pridwen keeps its
+    system tree read-only for exactly this reason, so nothing there is writable to
+    begin with. Run this audit freely on your own host; only create and exploit such
+    a file on a Range target you own.
+    Ways forward:
+      1. `find /etc/systemd -perm -0002 -type f 2>/dev/null`  list writable units
+      2. `sudo chown root:root FILE && sudo chmod 644 FILE`   restore safe ownership
+      3. `pridwen learn privesc-03`                           schedules and writable paths
   man: [find(1), systemd.unit(5)]
   cooldown: 3600
   priority: 5
@@ -38,7 +52,18 @@
     command: '^sudo\s+(vim?|less|find|awk|python3?|perl|nmap)\b.*(!|-c\s|--interactive|/bin/sh)'
     exit: any
   hint: >-
-    Several everyday tools can spawn a shell, so granting them through sudo hands out root. This is why Pridwen's wheel rule grants whole-command sudo to trusted users rather than piecemeal program rights.
+    Several everyday tools can spawn a shell, so granting one through sudo effectively hands out root. This is why Pridwen's wheel rule grants whole-command sudo to trusted people rather than piecemeal program rights.
+  why: |
+    You ran a tool under sudo in a way that can launch a shell, such as an editor's
+    shell escape or an interpreter's inline command. Because the tool runs as root,
+    that shell is a root shell, so a sudo grant on any such program is a root grant in
+    disguise. Pridwen avoids this whole class of mistake by giving members of `wheel`
+    whole-command sudo and everyone else none, rather than clever per-program rules.
+    Study the escalation only on a Range target you own.
+    Ways forward:
+      1. `sudo -l`                        read exactly what sudo allows you
+      2. `sudo visudo`                    edit the policy with a syntax check
+      3. `pridwen learn privesc-02`       how a narrow grant becomes root
   man: [sudoers(5)]
   cooldown: 3600
   priority: 10
@@ -49,7 +74,18 @@
     command: '^find\s+.*(/etc/cron|/etc/systemd/system).*-writable'
     exit: any
   hint: >-
-    A writable scheduled job runs on someone else's schedule with their rights. On the defender's side, `systemctl list-timers` plus correct permissions on the unit files closes this path.
+    A writable scheduled job runs on someone else's schedule with their rights, so editing it inherits their privilege. On the defender's side, `systemctl list-timers` plus tight permissions on the unit files closes this path.
+  why: |
+    You searched the scheduler directories for writable jobs. Anything root runs on a
+    schedule from a file the wrong person can edit is an escalation waiting to happen:
+    change the file, wait for the next run, inherit root. That is why the defender
+    inventories every scheduled job and locks the mode on each script it calls, and
+    why Pridwen's immutable system tree keeps these paths out of reach. Plant and ride
+    such a job only on a Range target you own.
+    Ways forward:
+      1. `systemctl list-timers --all`    list every scheduled job and when it fires
+      2. `ls -l /usr/local/bin/*.sh`      check who may write each root-run script
+      3. `sudo chmod 755 SCRIPT`          leave write to the owner (root) only
   man: [find(1), systemd.timer(5)]
   cooldown: 3600
   priority: 5

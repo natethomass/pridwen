@@ -8,7 +8,20 @@
     command: '^journalctl\s*$'
     exit: [0]
   hint: >-
-    That is everything the journal holds, oldest first. If it warned that you are "not seeing messages from other users", your account is not in `wheel` or `systemd-journal` yet; otherwise `journalctl -r -n 50` is the useful starting view.
+    That was everything the journal holds, oldest first, which is thousands of lines. `journalctl -r -n 50` shows the newest fifty; if it warned about "not seeing messages from other users", your account is not in `wheel` or `systemd-journal`.
+  why: |
+    Bare `journalctl` prints the whole journal from the first message it kept, inside a
+    pager, so you start weeks in the past and the interesting lines are at the end. The
+    journal is one indexed store for every message the kernel, services and logins
+    write, which is why it is large and why filters exist: by boot, priority, unit, and
+    time. Members of `wheel` or `systemd-journal` see the full journal; anyone else sees
+    only their own session, and journald prints a hint at the top when that is the case.
+    Pridwen's admin account, the one the welcome wizard made, is in `wheel`.
+    Ways forward:
+      1. `journalctl -r -n 50`                     the newest fifty lines, newest first
+      2. `journalctl -b -p err`                    errors and worse since this boot
+      3. `journalctl -f`                           follow new messages as they arrive
+      4. `pridwen explain journalctl`              what each flag means
   man: [journalctl(1)]
   cooldown: 604800
   priority: -10
@@ -19,15 +32,21 @@
     command: '(?P<path>/var/log/(messages|syslog|auth\.log|secure|kern\.log|daemon\.log))\b'
     probe: missing:{path}
   hint: >-
-    Fedora does not write `{path}` unless rsyslog is installed; the journal holds those lines. `journalctl -u sshd`, `journalctl -k`, or `journalctl _COMM=sudo` are the equivalents.
+    `{path}` does not exist here: Fedora writes it only if rsyslog is installed, and Pridwen keeps those lines in the journal instead. `journalctl -u sshd`, `journalctl -k`, or `journalctl _COMM=sudo` are the equivalents.
   why: |
-    systemd-journald collects kernel, service and login messages in a binary, indexed
-    journal under `/var/log/journal/`. The classic text files only appear if a syslog
-    daemon is installed to write them, and Pridwen does not ship one.
+    The classic text files under `/var/log` were written by a syslog daemon, usually
+    `rsyslog`, and Pridwen does not ship one. systemd-journald collects the same kernel,
+    service and login messages into a binary, indexed journal under
+    `/var/log/journal/`, which is faster to filter and rotates itself so it never fills
+    the disk. So `{path}` is not missing because of a fault; it was never written. Every
+    tutorial that says `tail /var/log/messages` translates to a `journalctl` query:
+    `messages` and `syslog` are plain `journalctl`, `kern.log` is `-k`, `secure` and
+    `auth.log` are `_COMM=sudo` and `-u sshd`.
     Ways forward:
-      1. `journalctl -p warning -b`            warnings and worse since boot
-      2. `journalctl -u NetworkManager -f`     follow one service
-      3. `journalctl _COMM=sudo`               the old /var/log/secure sudo lines
+      1. `journalctl -p warning -b`                warnings and worse since boot (messages)
+      2. `journalctl -k`                           kernel messages (kern.log, dmesg)
+      3. `journalctl _COMM=sudo`                   the sudo lines that were in secure
+      4. `journalctl -u sshd -f`                   follow the ssh daemon (auth.log)
   man: [journalctl(1), systemd-journald.service(8)]
   cooldown: 3600
   priority: 20
@@ -37,7 +56,19 @@
   when:
     command: '^tail\s+-[fF]\s+/var/log/'
   hint: >-
-    For a live view of the system, `journalctl -f` follows everything and `journalctl -f -u unit` follows one service.
+    Most of `/var/log` is not written on Pridwen, so that tail is likely watching a file that never changes. For a live view of the system, `journalctl -f` follows everything and `journalctl -f -u unit` follows one service.
+  why: |
+    `tail -f` prints new lines as a file grows, and it is the right tool for a file a
+    program writes directly. On Pridwen the system's own messages do not go to text
+    files; journald collects them into the journal, so a `tail -f` on `/var/log` either
+    fails because the file is absent or sits silent because nothing appends to it.
+    `journalctl -f` is the same idea for the journal, and because the journal is indexed
+    you can follow one unit, one priority, or one program instead of everything. Ctrl-C
+    stops the follow in both tools.
+    Ways forward:
+      1. `journalctl -f`                           follow every new message
+      2. `journalctl -f -u NetworkManager`         follow one service
+      3. `journalctl -n 100 -f`                    show a hundred lines of history, then follow
   man: [journalctl(1)]
   cooldown: 3600
   priority: 10
@@ -47,7 +78,20 @@
   when:
     command: '^journalctl\s+.*--since'
   hint: >-
-    `--since` takes `"2026-09-04 08:00"`, `today`, `yesterday`, `-1h`, or `"10 min ago"`, quoted when it contains a space.
+    If that failed to parse the time, `--since` wants one argument: `"2026-09-07 08:00"`, `today`, `yesterday`, `-1h`, or `"10 min ago"`, quoted whenever it contains a space.
+  why: |
+    `--since` and `--until` bound the journal to a time window, and they accept several
+    forms: an absolute timestamp like `"2026-09-07 08:00"`, a word like `today`,
+    `yesterday` or `now`, a relative offset like `-1h` or `-30min`, or a phrase like
+    `"10 min ago"`. The shell splits arguments on spaces, so `--since 10 min ago` hands
+    journalctl three arguments and it fails with `Failed to parse timestamp`. Quoting
+    keeps the phrase together. Relative forms with no spaces need no quotes and are the
+    quickest to type when narrowing an incident to its window.
+    Ways forward:
+      1. `journalctl --since "10 min ago"`         quoted phrase
+      2. `journalctl --since -1h`                  relative, no quotes needed
+      3. `journalctl --since today --until "2026-09-07 12:00"`   a window with both ends
+      4. `pridwen explain journalctl`              the time forms and the other flags
   man: [journalctl(1), systemd.time(7)]
   cooldown: 3600
   priority: 5
@@ -58,7 +102,19 @@
     command: '^journalctl\s+.*-f\b'
     exit: [130]
   hint: >-
-    Ctrl-C is the normal way to leave `journalctl -f`. `-n 100` before `-f` shows some history first.
+    Exit 130 just means you pressed Ctrl-C, which is the normal way to leave `journalctl -f`; nothing went wrong. `-n 100` before `-f` shows some history first next time.
+  why: |
+    `journalctl -f` follows the journal and never finishes on its own; it prints new
+    messages until you interrupt it. Ctrl-C sends the interrupt signal, and a program
+    stopped that way exits with status 130 (128 plus the signal number 2), so bash and
+    the Coach see a non-zero exit even though everything worked. That is the shell's
+    convention, not an error in the journal. If the follow started with an empty
+    screen, adding `-n 100` prints the last hundred lines first so you have context
+    before new ones arrive.
+    Ways forward:
+      1. `journalctl -n 100 -f`                    history, then follow
+      2. `journalctl -f -u unit`                   follow one service only
+      3. `journalctl -f -p warning`                follow only warnings and worse
   man: [journalctl(1)]
   cooldown: 86400
   priority: 5
@@ -69,7 +125,20 @@
     command: '^dmesg\b'
     not_sudo: true
   hint: >-
-    The kernel ring buffer is restricted to root on Pridwen (`kernel.dmesg_restrict=1`). `journalctl -k` shows the same messages for wheel members, or `sudo dmesg -T`.
+    The kernel ring buffer is restricted to root on Pridwen (`kernel.dmesg_restrict=1`), so `dmesg` was refused. `journalctl -k` shows the same messages to `wheel` members, or `sudo dmesg -T`.
+  why: |
+    `dmesg` reads the kernel's ring buffer, the messages the kernel prints about
+    hardware, drivers and the filesystem. Pridwen sets the sysctl
+    `kernel.dmesg_restrict=1` as part of its hardening baseline, so only root may read
+    it; kernel messages can leak memory addresses and hardware details that help an
+    attacker, and the same restriction is required by the server hardening standards
+    you will meet on a job. The messages also reach the journal, and `journalctl -k`
+    shows exactly them to anyone in `wheel` without needing root. `-T` on `dmesg`
+    prints human-readable timestamps instead of seconds since boot.
+    Ways forward:
+      1. `journalctl -k`                           kernel messages, no sudo for wheel members
+      2. `journalctl -k -b -1`                     kernel messages from the previous boot
+      3. `sudo dmesg -T`                           the ring buffer itself, with readable times
   man: [dmesg(1), journalctl(1)]
   cooldown: 3600
   priority: 10
@@ -80,7 +149,20 @@
     command: '^(cat|less|tail|grep)\s+.*(?P<path>/var/log/audit/audit\.log)'
     not_sudo: true
   hint: >-
-    The audit log is root-only, and `ausearch` is the tool for it: `sudo ausearch -ts today -m USER_CMD` for sudo commands, `-m avc` for SELinux.
+    The audit log is root-only, so that could not open it, and `ausearch` is the tool for it anyway: `sudo ausearch -ts today -m USER_CMD` for sudo commands, `-m avc` for SELinux denials.
+  why: |
+    `/var/log/audit/audit.log` is written by auditd, the kernel-level audit daemon, and
+    holds every sudo command, login, and SELinux denial. It is the record an intruder
+    would most like to read or edit, so it is owned by root with no access for anyone
+    else, and Pridwen keeps it that way. Even with `sudo`, reading it with `cat` is
+    hard work: records are one long `key=value` line each and some fields are
+    hex-encoded. `ausearch` filters by type and time and, with `-i`, decodes ids and
+    timestamps into names and dates; `aureport` summarises the whole log into counts.
+    Ways forward:
+      1. `sudo ausearch -m USER_CMD -ts today -i`   commands run through sudo since midnight
+      2. `sudo ausearch -m avc -ts recent`          SELinux denials from the last ten minutes
+      3. `sudo aureport --summary`                  counts of logins, failures, denials
+      4. `sudo less {path}`                         the raw file, if you really want it
   man: [ausearch(8), auditd(8)]
   cooldown: 3600
   priority: 10
@@ -91,7 +173,19 @@
     command: '^journalctl\s+--(vacuum|rotate|flush|verify)'
     not_sudo: true
   hint: >-
-    Trimming or rotating the journal writes to `/var/log/journal`, so it needs `sudo`. `journalctl --disk-usage` reads the size without it.
+    Trimming, rotating or verifying the journal writes to `/var/log/journal`, which only root may change, so that failed. Put `sudo` in front; `journalctl --disk-usage` reads the size without it.
+  why: |
+    Reading the journal is open to `wheel` members, but the files under
+    `/var/log/journal/` are owned by root and the `systemd-journal` group, and the
+    operations that change them (`--vacuum-size`, `--vacuum-time`, `--rotate`,
+    `--flush`, `--verify`) need root. Logs are evidence: an ordinary user must not be
+    able to delete the record of what they did, which is why trimming is privileged.
+    The journal also rotates itself on size automatically, so a manual vacuum is rarely
+    needed on a desktop; check the size first and trim only when it matters.
+    Ways forward:
+      1. `journalctl --disk-usage`                 how much the journal keeps, no sudo needed
+      2. `sudo journalctl --vacuum-size=200M`      trim archived files down to 200 MB
+      3. `sudo journalctl --vacuum-time=2weeks`    drop archived files older than two weeks
   man: [journalctl(1)]
   cooldown: 3600
   priority: 5
@@ -102,7 +196,20 @@
     command: '^(last|lastb|lastlog)\b'
     exit: any
   hint: >-
-    Recent Fedora keeps logins in wtmpdb and the journal rather than `/var/log/wtmp`, so `{cmd}` may be empty. `wtmpdb last` and `journalctl -u systemd-logind` show sessions; `lastlog2` shows last logins.
+    Recent Fedora keeps logins in wtmpdb and the journal rather than `/var/log/wtmp`, so `{cmd}` may be empty or missing. `wtmpdb last` and `journalctl -u systemd-logind` show sessions; `lastlog2` shows last logins.
+  why: |
+    `last` reads `/var/log/wtmp`, a binary file that older systems appended a record to
+    on every login and reboot. Fedora replaced that format with `wtmpdb`, a small
+    database that is not affected by the year-2038 limit of the old one, and with
+    session records in the journal kept by `systemd-logind`. Because nothing writes the
+    old file any more, `{cmd}` prints little or nothing, and it may not even be
+    installed. The information is still there; it is read with the newer tools, and the
+    journal version can be filtered by time and user like everything else.
+    Ways forward:
+      1. `wtmpdb last`                             logins and reboots, newest first
+      2. `journalctl -u systemd-logind --since today`   sessions opening and closing
+      3. `lastlog2`                                each user's most recent login
+      4. `sudo ausearch -m LOGIN -ts today -i`     logins as the audit log recorded them
   man: [wtmpdb(8), journalctl(1)]
   cooldown: 86400
   priority: 5

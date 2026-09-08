@@ -169,8 +169,8 @@ Dispatch.
 
 ## Lessons (`lessons/<id>.md`)
 
-Short markdown with a title line, 150–400 words, ending in "Try it" steps that a
-checker can verify later (M3). Ids: `<node-prefix>-NN`, where prefixes are the
+Markdown with a title line, 500–900 words, ending in "Try it" steps that a
+checker can verify (M3 missions). Ids: `<node-prefix>-NN`, where prefixes are the
 node id or its usual short form (`perm`, `svc`, `pkg`, `net`, `proc`, `user`,
 `file`, `term`, `store`, `boot`, `sudo`, `selinux`, `fw`, `log`, `ssh`, `hard`,
 `script`, `timer`, `ctr`, `ansible`, `logan`, `detect`, `ir`, `forensics`,
@@ -178,5 +178,48 @@ node id or its usual short form (`perm`, `svc`, `pkg`, `net`, `proc`, `user`,
 
 ## Voice
 
-One line, plain English, no exclamation marks, no "oops". Say what the system
-did and why, then the smallest next step. Name the man page. Never scold.
+Plain English, no exclamation marks, no "oops". Say what the system did and
+why, then the smallest next step. Name the man page. Never scold. Address the
+learner as "you"; the system did something, the learner did nothing wrong.
+
+## Over-explain, always
+
+Owner's rule (2026-09-07): learning material errs on the side of too much
+explanation, every time. The reader is assumed to be in their first week with
+a terminal, and a reader who already knows a thing can skip a paragraph; a
+reader who does not know it cannot invent one. Concretely:
+
+- **Every command is shown, never described.** A fenced block with the prompt
+  `{user}@{host}:~$`, the exact command, and the output it prints. Then the
+  output is read back line by line in prose: which column is which, which line
+  matters, what a normal result looks like.
+- **Every flag is named the first time it appears** (`-l` is "long format: one
+  file per line with permissions, owner, size, and date"). Never "the usual
+  flags". Never assume an option is obvious.
+- **Every term is defined in the sentence that introduces it.** Daemon, inode,
+  unit, shell, PID, mask, zone: say what the word means before using it again.
+- **Say what should happen and what it looks like when it does not.** Quote
+  the real error text (`Permission denied`, `Unit not found`, `No such file or
+  directory`) and translate it, then give the fix.
+- **Say why the system is built this way** before the how. A learner who knows
+  why `/usr` is read-only remembers it; one who is told "use rpm-ostree" does not.
+- **Repeat the essentials.** If a lesson depends on something from an earlier
+  node, restate it in one sentence rather than pointing at the other lesson.
+- **End with what to remember**: three bullets a reader could recite.
+
+Shape of a lesson: title; why this matters (2 short paragraphs); "Words you'll
+meet" (a bullet per term); "How it works" (commands with output, explained);
+"When it goes wrong" (errors quoted and translated); "Try it" (numbered steps
+that say exactly what to type and what to expect); "Remember" (3 bullets).
+Renderer subset only: `#`/`##` headings, paragraphs, `-` bullets, `1.` numbered
+lists, fenced code, inline code, `**bold**`. No tables, links, blockquotes,
+nested lists, or images. Placeholders `{user}`, `{home}`, `{host}` are filled
+at render time; never write a real username.
+
+Rule hints stay one line (they print under a failed command) but must still
+say what happened, why, and the next step, not just a command. Every rule
+carries a `why` block for `pridwen why`: what the system did, why it is built
+that way, then numbered "Ways forward" with one command per line and a short
+comment after it. Nudges are two sentences: what was noticed, what the lesson
+gives. Mission briefs, steps, hints and `fail` messages follow the same rule
+(see `academy.md`).

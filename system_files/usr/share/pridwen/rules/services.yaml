@@ -8,15 +8,19 @@
     command: '^systemctl\s+(?P<verb>start|stop|restart|reload|enable|disable|mask|unmask|daemon-reload|edit)\b'
     not_sudo: true
   hint: >-
-    Changing a system unit needs root: `sudo systemctl {verb} ...`. Add `--user` instead when the unit is one of your own.
+    Changing a system unit needs root, so `{verb}` was refused: `sudo systemctl {verb} ...`. If the unit is one of your own, add `--user` instead of `sudo`.
   why: |
-    systemd asked polkit whether you may manage system units, and from a terminal the
-    answer is no unless you authenticate. Reading state (`status`, `list-units`) never
-    needs root; changing it does.
+    systemd asked polkit, the service that decides what an ordinary user may do system-wide,
+    whether you may `{verb}` a system unit, and from a terminal the answer is no unless you
+    authenticate. Pridwen keeps the line where systemd draws it: reading state (`status`,
+    `list-units`, `is-active`) never needs root, so you can always look, while changing
+    what runs is an administrator's action and goes through `sudo`, which on Pridwen only
+    the wheel group can use. Units that belong to your own session live under your user
+    manager and never need root at all.
     Ways forward:
-      1. `sudo systemctl start unit`         the system manager
-      2. `systemctl --user start unit`       your own manager, no root
-      3. `systemctl status unit`             look first, no sudo needed
+      1. `sudo systemctl {verb} unit`        the system manager, as root
+      2. `systemctl --user {verb} unit`      your own manager, no root
+      3. `systemctl status unit`             look first; reading needs no sudo
   man: [systemctl(1), systemd.unit(5)]
   cooldown: 3600
   priority: 5
@@ -27,15 +31,18 @@
     command: '^(sudo\s+)?systemctl\s+(--user\s+)?(start|stop|restart|status|enable|disable|cat|show)\s+(?P<unit>[\w@.-]+)\s*$'
     probe: no_unit:{unit}
   hint: >-
-    There is no unit named `{unit}`. `systemctl list-unit-files | grep -i {unit}` finds close matches; the package that provides it may not be in the image.
+    There is no unit file named `{unit}`, so systemd could not act on it. `systemctl list-unit-files | grep -i {unit}` finds close matches; the package that provides it may not be in the image.
   why: |
-    systemd looks for `{unit}` (adding `.service` if you gave no suffix) in
-    `/etc/systemd/system`, `/run/systemd/system` and `/usr/lib/systemd/system`. It is in
-    none of them.
+    systemd looked for `{unit}` (adding `.service` if you gave no suffix) in the three unit
+    directories, `/etc/systemd/system`, `/run/systemd/system` and `/usr/lib/systemd/system`,
+    and found it in none of them. On a traditional system the next step would be to install
+    the package that ships the unit; on Pridwen the base is a read-only image, so a service
+    that is not in the image is not there until it is layered, and a typo is the more
+    common cause. Check the spelling and the suffix first.
     Ways forward:
-      1. `systemctl list-unit-files | grep -i {unit}`   near misses
+      1. `systemctl list-unit-files | grep -i {unit}`   near misses by name
       2. `rpm -ql package | grep systemd`               which units a package ships
-      3. `rpm-ostree install package`                   if the service is not in the image
+      3. `sudo rpm-ostree install package`              layer it, active after a reboot
   man: [systemctl(1), systemd.unit(5)]
   cooldown: 3600
   priority: 10
@@ -46,7 +53,19 @@
     command: '^systemctl\s+(--user\s+)?status\s+(?P<unit>[\w@.-]+)\s*$'
     exit: [3]
   hint: >-
-    Exit 3 from `status` just means `{unit}` is not running; the output above is still complete. `sudo systemctl start {unit}` starts it now, `enable --now` also at boot.
+    Exit 3 from `status` is not an error; it is how `status` reports that `{unit}` is not running, and the output above is complete. `sudo systemctl start {unit}` starts it now; `enable --now` also at boot.
+  why: |
+    `systemctl status` uses its exit code to tell scripts the unit's state: 0 means active,
+    3 means inactive or dead, 4 means unknown. So the shell saw a non-zero exit, but the
+    text above it is the whole answer, and nothing failed. Look at the Loaded line to see
+    whether `{unit}` is enabled (set to start at boot) and the Active line to see why it is
+    not running now; some units, like oneshot services and timers' targets, are inactive
+    most of the time by design. On Pridwen several services, `sshd` among them, are
+    inactive and disabled on purpose.
+    Ways forward:
+      1. `sudo systemctl start {unit}`             run it now, no change at boot
+      2. `sudo systemctl enable --now {unit}`      run it now and at every boot
+      3. `journalctl -u {unit} -b`                 why it stopped, if it was running before
   man: [systemctl(1)]
   cooldown: 3600
   priority: 5
@@ -57,7 +76,18 @@
     command: '^systemctl\s+(--user\s+)?status\s+(?P<unit>[\w@.-]+)\s*$'
     exit: [4]
   hint: >-
-    Exit 4 means systemd has never heard of `{unit}`. Check the spelling, or `systemctl list-unit-files` to see what exists.
+    Exit 4 means systemd has never heard of `{unit}`; no unit file with that name exists. Check the spelling and suffix, or `systemctl list-unit-files | grep -i {unit}` to see what does exist.
+  why: |
+    `status` returns 4 when the unit is not found at all, as opposed to 3 when it exists
+    but is not running. systemd searched `/etc/systemd/system`, `/run/systemd/system` and
+    `/usr/lib/systemd/system` for `{unit}` and its `.service` form and came up empty. The
+    usual causes are a typo, the wrong suffix (a timer is `name.timer`, not `name.service`),
+    asking the system manager for a unit that belongs to your user manager, or a service
+    whose package is simply not part of the Pridwen image.
+    Ways forward:
+      1. `systemctl list-unit-files | grep -i {unit}`   near misses in the system manager
+      2. `systemctl --user list-unit-files | grep -i {unit}`   in case it is a user unit
+      3. `rpm-ostree search {unit}`                    whether a package would provide it
   man: [systemctl(1)]
   cooldown: 3600
   priority: 6
@@ -68,15 +98,18 @@
     command: '^sudo\s+systemctl\s+enable\s+(?!--now)(?P<unit>[\w@.-]+)\s*$'
     exit: [0]
   hint: >-
-    `enable` only wires `{unit}` into the next boot; it is not running yet. `sudo systemctl start {unit}` now, or use `enable --now` next time.
+    `enable` only wired `{unit}` into the next boot; it is not running yet. `sudo systemctl start {unit}` runs it now, or use `enable --now` next time to do both at once.
   why: |
-    systemd separates the two questions "should this run at boot" (enabled, a symlink in
-    `/etc/systemd/system/*.wants/`) and "is it running now" (active). `enable` answers the
-    first only.
+    systemd keeps two separate questions: "should this start at boot" (enabled, which is a
+    symlink in `/etc/systemd/system/*.wants/`) and "is it running now" (active). `enable`
+    answers the first only, so `{unit}` will come up after the next reboot and is doing
+    nothing until then. This is the origin of "it only works after a reboot". The split is
+    deliberate: it lets an administrator prepare a machine's boot without disturbing what is
+    running, and it is why Pridwen can ship `sshd` present but neither started nor enabled.
     Ways forward:
-      1. `sudo systemctl start {unit}`             run it now
-      2. `sudo systemctl enable --now {unit}`      both at once
-      3. `systemctl is-enabled {unit}; systemctl is-active {unit}`   check each
+      1. `sudo systemctl start {unit}`             run it now as well
+      2. `sudo systemctl enable --now {unit}`      both in one step, next time
+      3. `systemctl is-enabled {unit}; systemctl is-active {unit}`   check each answer
   man: [systemctl(1)]
   cooldown: 86400
   priority: -2
@@ -87,7 +120,18 @@
     command: '^sudo\s+systemctl\s+start\s+(?P<unit>[\w@.-]+)\s*$'
     exit: [0]
   hint: >-
-    `{unit}` is running until the next reboot. If it should come back on its own, `sudo systemctl enable {unit}` as well.
+    `{unit}` is running now but only until the next reboot; `start` does not touch boot. If it should come back on its own, `sudo systemctl enable {unit}` as well.
+  why: |
+    `start` changes the unit's active state and nothing else; whether it starts at boot is
+    the separate enabled state, a symlink under `/etc/systemd/system/*.wants/` that only
+    `enable` creates. So `{unit}` is active now and will be gone after the next reboot,
+    which is the origin of "it worked until we rebooted". Sometimes that is exactly what
+    you want, a service turned on for one session, and on a hardened desktop it is the
+    safer default. When it should persist, enable it too.
+    Ways forward:
+      1. `sudo systemctl enable {unit}`            also start it at every boot
+      2. `systemctl is-enabled {unit}`             confirm which state it is in
+      3. `sudo systemctl stop {unit}`              turn it back off when the session is done
   man: [systemctl(1)]
   cooldown: 86400
   priority: -3
@@ -98,7 +142,17 @@
     command: '^(sudo\s+)?service\s+(?P<name>\S+)\s+(?P<action>\S+)'
     exit: any
   hint: >-
-    `service` is a compatibility wrapper from the SysV days. The native form is `systemctl {action} {name}`, which also understands `status`, `enable` and `--user`.
+    `service` is a compatibility wrapper from the SysV init days and only forwards to systemd. The native form is `systemctl {action} {name}`, which also understands `status`, `enable` and `--user`.
+  why: |
+    Before systemd, Fedora used SysV init, and `service name action` was how you started and
+    stopped daemons. The `service` command still exists so old scripts keep working, and it
+    quietly translates to `systemctl {action} {name}`, but it knows nothing about enabling at
+    boot, user units, timers, or the journal. Learning `systemctl` directly gives you the
+    whole picture and is what every current Fedora, RHEL and Rocky machine expects.
+    Ways forward:
+      1. `systemctl {action} {name}`               the native form of what you just typed
+      2. `systemctl status {name}`                 loaded, enabled, active and the last log lines
+      3. `pridwen explain systemctl`               the verbs and flags, annotated
   man: [systemctl(1)]
   cooldown: 86400
   priority: 5
@@ -109,7 +163,18 @@
     command: '^(sudo\s+)?(chkconfig|update-rc\.d|rc-update)\b'
     exit: any
   hint: >-
-    That tool belongs to an older init system. `systemctl enable name` and `systemctl disable name` do the job here, and `systemctl list-unit-files --state=enabled` lists what is on.
+    That tool belongs to an older init system and does not manage systemd units. `systemctl enable name` and `systemctl disable name` do the job here, and `systemctl list-unit-files --state=enabled` lists what is on.
+  why: |
+    `chkconfig`, `update-rc.d` and `rc-update` managed which SysV or OpenRC scripts ran at
+    boot on older or other distributions. Fedora, and so Pridwen, uses systemd, where "start
+    at boot" is a symlink under `/etc/systemd/system/*.wants/` created by `systemctl enable`
+    and removed by `systemctl disable`. The old tools either do not exist in the image or only
+    act on leftover compatibility scripts, so what you set with them would not reach the
+    units you care about.
+    Ways forward:
+      1. `sudo systemctl enable name`               start it at boot
+      2. `sudo systemctl disable name`              stop starting it at boot
+      3. `systemctl list-unit-files --state=enabled`   everything currently set to start
   man: [systemctl(1)]
   cooldown: 86400
   priority: 10
@@ -120,7 +185,18 @@
     command: '^sudo\s+systemctl\s+--user\b'
     exit: any
   hint: >-
-    `sudo systemctl --user` talks to root's user manager, not yours, and usually fails to find it. Drop the `sudo` for your own units.
+    `sudo systemctl --user` talks to root's user manager, not yours, and usually cannot even find one. Drop the `sudo` for your own units; `--user` never needs root.
+  why: |
+    systemd runs one manager for the system as pid 1 and a separate, smaller manager for
+    each logged-in user. `--user` addresses the manager of whoever runs the command, and
+    under `sudo` that is root, who has no session here, so the reply is "Failed to connect
+    to bus". The two managers are kept apart on purpose: a user can run background units
+    without any power over the system, and root's actions never reach into your session.
+    Your units are yours; run the command as yourself.
+    Ways forward:
+      1. `systemctl --user status`                 your own manager, no sudo
+      2. `systemctl --user list-units`             what your session runs
+      3. `sudo systemctl status`                   the system manager, when that is the target
   man: [systemctl(1)]
   cooldown: 3600
   priority: 20
@@ -131,7 +207,19 @@
     command: '^(sudo\s+)?(cp|mv|vim?|nano|tee|ln)\s+.*(?P<path>/etc/systemd/system/[\w@.-]+\.(service|timer|socket|mount))\b'
     exit: [0]
   hint: >-
-    systemd reads unit files at load time, so run `sudo systemctl daemon-reload` before starting it. `systemctl cat {path}` shows what it loaded.
+    A unit file changed on disk, but systemd only reads unit files when it loads them, so run `sudo systemctl daemon-reload` before starting it. `systemctl cat {path}` shows what it loaded.
+  why: |
+    systemd reads unit files into memory at load time and keeps working from that copy, so
+    an edited `{path}` is not seen until you ask it to reread; starting the unit now would
+    run the old definition, and `status` would warn that the file changed on disk. This is
+    the same reason `/etc/systemd/system` is the place for your changes on Pridwen: it is
+    writable and survives image updates, while `/usr/lib/systemd/system` is part of the
+    read-only image. For small changes to a shipped unit, a drop-in from `systemctl edit`
+    is tidier than a copy.
+    Ways forward:
+      1. `sudo systemctl daemon-reload`             make systemd reread every unit file
+      2. `systemctl cat {path}`                     confirm the definition it now holds
+      3. `sudo systemctl edit unit`                 a drop-in instead of a full copy, next time
   man: [systemctl(1), systemd.service(5)]
   cooldown: 3600
   priority: 5
@@ -142,15 +230,19 @@
     command: '^sudo\s+systemctl\s+(start|restart)\s+(?P<unit>[\w@.-]+)\s*$'
     exit: [1]
   hint: >-
-    `{unit}` refused to start. `systemctl status {unit}` shows the exit reason, and `journalctl -u {unit} -n 30` the last thirty lines it logged.
+    `{unit}` refused to start: its main process exited or a condition failed. The reason is in the log, not on your screen: `systemctl status {unit}` shows it, and `journalctl -u {unit} -n 30` the last thirty lines.
   why: |
-    Exit 1 from `systemctl start` means the unit's main process exited or the unit's
-    conditions failed. The reason is in the journal, not on your terminal.
+    Exit 1 from `systemctl start` means systemd tried and the unit ended up failed: the
+    program exited with an error, a file it needed was missing, or a `Condition` line in
+    the unit was not met. systemd does not print the program's own output on your terminal;
+    it captures it in the journal, the system log, so that the reason survives and can be
+    read later by anyone. On Pridwen, SELinux denials and a firewall in the drop zone are
+    two extra reasons a service can fail, and `pridwen why` will mention a matching denial.
     Ways forward:
-      1. `systemctl status {unit}`                      summary and last log lines
-      2. `journalctl -u {unit} -b`                      everything since boot
-      3. `systemctl cat {unit}`                         read the ExecStart it tried
-      4. `sudo systemctl reset-failed {unit}`           clear the failed state after fixing
+      1. `systemctl status {unit}`                      summary and the last log lines
+      2. `journalctl -u {unit} -b`                      everything it logged since boot
+      3. `systemctl cat {unit}`                         read the ExecStart it tried to run
+      4. `sudo systemctl reset-failed {unit}`           clear the failed state after fixing it
   man: [systemctl(1), journalctl(1)]
   cooldown: 1800
   priority: 8

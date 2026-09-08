@@ -8,7 +8,22 @@
     command: '^(sudo\s+)?find\s+.*-(newer|mmin|mtime|cmin|ctime)\b'
     exit: [0]
   hint: >-
-    Time-based `find` is the fastest timeline: `-cmin -60` for metadata changed in the last hour catches things `-mmin` misses when timestamps were reset.
+    A time-based `find` is the fastest disk timeline. If the results look too clean, ask for ctime with `-cmin -60` or `-newerct`: `touch` can reset mtime, but nothing sets ctime by hand.
+  why: |
+    You searched a tree for files by time, which is how a forensic timeline is
+    built from the disk instead of the logs. Every file carries an mtime, when
+    its contents changed, and a ctime, when its metadata or contents changed.
+    `touch -d` can set mtime to any date, and an intruder who knows that resets
+    it after editing a file; ctime is written only by the kernel and cannot be
+    set from userspace, so the `c` variants of the same tests catch what the
+    `m` variants miss. Run `find` under `sudo` when the tree has root-only
+    directories, or the list is silently incomplete, and add `-printf` with a
+    time field so the output sorts into order.
+    Ways forward:
+      1. `sudo find /etc -type f -cmin -60`                                                     metadata changed in the last hour
+      2. `sudo find /etc -type f -newerct "09:00" ! -newerct "09:20"`                          a ctime window
+      3. `sudo find /etc -type f -newermt "09:00" -printf '%TY-%Tm-%Td %TH:%TM %p\n' | sort`   mtime with times, ordered
+      4. `pridwen learn forensics-02`                                                           finding by time, in full
   man: [find(1)]
   cooldown: 604800
   priority: -10
@@ -20,7 +35,22 @@
     command: '^sudo\s+dd\s+if=(?P<dev>/dev/\S+)\s+.*of=\S+'
     exit: [0]
   hint: >-
-    Hash the image and the source the same way (`sha256sum`) so you can show they match. `conv=noerror,sync` and `status=progress` are the flags for the next one; a read-only source is safer still.
+    You imaged `{dev}`. Prove the copy with `sudo sha256sum {dev} <image>` so the two hashes match, and save the device hash; from here on work only on the image, mounted `-o ro,loop`.
+  why: |
+    `dd` copied `{dev}` byte for byte into a file, and the copy finished. A
+    forensic image is only evidence once you can show it equals the source, so
+    the next step is to hash both the device and the image with the same tool
+    and save the result; `sha256sum -c` later proves the image never changed.
+    Pridwen teaches this on a small Range volume, never on the host's own LUKS
+    disk, because `dd` writes exactly where `of=` points with no confirmation
+    and no undo. For the next image, `status=progress` shows it working and
+    `conv=noerror,sync` carries on past read errors, padding the bad block with
+    zeros rather than stopping short.
+    Ways forward:
+      1. `sudo sha256sum {dev} <image>`                    the two hashes must match
+      2. `sudo sha256sum {dev} > <image>.sha256`           keep the source hash with the case
+      3. `sudo mount -o ro,loop <image> /mnt`              browse without the possibility of writing
+      4. `pridwen learn forensics-03`                      images, copies and the chain between them
   man: [dd(1), sha256sum(1)]
   cooldown: 86400
   priority: -5

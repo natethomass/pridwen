@@ -8,19 +8,33 @@ target: host
 brief: |
   You lent this laptop to a friend for a week. It came back working, mostly.
   The nightly job you set up, `pridwen-nightwatch`, has not written a line
-  since they had it, and they cannot remember what they changed. Press Start
-  and the Academy puts your home directory back the way they left it. Nothing
-  outside your home is touched.
+  since they had it, and they cannot remember what they changed. Press
+  Start and the Academy puts your home directory back the way they left it:
+  two user units, a script, a config file and a log directory. Nothing
+  outside your home is touched, and nothing here needs sudo.
 
   The job is small: a timer runs a service every night, the service runs a
-  script, the script reads a config file holding a token and appends one line
-  to `~/pridwen/nightwatch/log`. Somewhere along that chain several things are
-  wrong, and at least one of them is not where you would first look. Start the
-  service by hand and read what systemd says. Read modes and labels, not just
-  contents. Fix each fault with the smallest change that works, run the job
-  once to prove the chain holds, and leave the timer enabled and running. This
-  is everything Core has taught you, in the order a real Tuesday would ask for
-  it.
+  script, the script reads a config file holding a token (a secret string
+  that stands in for a password) and appends one line to
+  `~/pridwen/nightwatch/log`. Somewhere along that chain several things are
+  wrong, and at least one of them is not where you would first look. Work
+  the chain from the top. Start the service by hand and read what systemd
+  says; `status` names the file it tried to run, and the journal line under
+  it says whether the file was missing or could not be executed. Read modes
+  with `ls -l` and labels with `ls -Z`, not just contents: a config holding
+  a token should be readable by nobody but you, and a file wearing a web
+  server's type in your home is a label that needs restoring. Then look at
+  the timer: a calendar word systemd does not know leaves it with no
+  trigger, and a timer with no trigger refuses to load.
+
+  Fix each fault with the smallest change that works, run the job once to
+  prove the chain holds, and leave the timer enabled and running. This is
+  everything Core has taught you (services, permissions, SELinux, timers,
+  the journal) in the order a real Tuesday would ask for it. Done looks
+  like a `nightwatch ok` line in the log, a timer that is enabled and
+  active, a private config, and a correctly labelled README. The checker
+  reads the log for that line, asks `systemctl --user` about the timer,
+  checks the config's permission bits, and runs `ls -Z` on the README.
 setup: |
   systemctl --user disable --now pridwen-nightwatch.timer >/dev/null 2>&1 || true
   systemctl --user stop pridwen-nightwatch.service >/dev/null 2>&1 || true
@@ -61,41 +75,113 @@ setup: |
   EOS
   systemctl --user daemon-reload
 steps:
-  - Read the units, the script, the config and the directory under `~/pridwen/nightwatch` before you change anything.
-  - Get the service to run cleanly by hand, so that the log gains a `nightwatch ok` line.
-  - Make the config file private to you; it holds a token.
-  - Give the README under `~/pridwen/nightwatch` the label your home directory expects.
-  - Get the timer loading, enabled, and active.
+  - >-
+    Read both units with `systemctl --user cat`, the script, the config and
+    the directory under `~/pridwen/nightwatch` before you change anything.
+    Expect a service whose `ExecStart=` points at a script in `~/pridwen/bin`
+    and a timer with an `OnCalendar=` line.
+  - >-
+    Start the service by hand with `systemctl --user start` and read
+    `status`. Expect a failure with code `203/EXEC` and a journal line
+    saying what could not be run.
+  - >-
+    Fix whatever stops the script from running, one fault at a time,
+    reloading after each unit edit, until the service runs cleanly and the
+    log gains a `nightwatch ok` line. Expect `status=0/SUCCESS` in `status`
+    and a dated line in `~/pridwen/nightwatch/log`.
+  - >-
+    Make the config file private to you with `chmod`; it holds a token.
+    Expect `-rw-------` from `ls -l`.
+  - >-
+    Give the README under `~/pridwen/nightwatch` the label your home
+    directory expects with `restorecon`. Expect `ls -Z` to show
+    `user_home_t`.
+  - >-
+    Get the timer loading, enabled, and active with `systemctl --user`.
+    Expect it in `list-timers` with a `NEXT` time.
 hints:
-  - "`systemctl --user status pridwen-nightwatch.service` after a start names the file it could not run, and the exit code tells you whether it was missing or not executable. `systemctl --user status pridwen-nightwatch.timer` explains a timer that refuses to load."
-  - "`ls -l` on the script and the config, `ls -Z` on everything under `~/pridwen/nightwatch`; `chmod`, `restorecon` and one corrected word in a unit file are the whole fix."
-  - "A timer with a calendar word systemd does not know has no trigger and will not load; `daily` is one it knows. `daemon-reload` after every unit edit, then `enable --now`."
+  - >-
+    `systemctl --user status pridwen-nightwatch.service` after a start names
+    the file it could not run, and the journal line beneath says why:
+    `No such file or directory` means the path in `ExecStart=` is wrong,
+    `Permission denied` means the file exists but is not executable. `ls -l`
+    on the script and the config, `ls -Z` on everything under
+    `~/pridwen/nightwatch`, and `systemctl --user status pridwen-nightwatch.timer`
+    for a timer that refuses to load.
+  - >-
+    Compare the path in `ExecStart=` letter by letter with the file that is
+    really in `~/pridwen/bin`. `chmod +x` gives the script its execute bit,
+    `chmod 600` closes the config, `restorecon -v` puts the policy's label
+    back, and `sed -i 's/old/new/' FILE` replaces one word in a file in
+    place (`-i`). `systemctl --user daemon-reload` after every unit edit. A
+    timer with a calendar word systemd does not know has no trigger and
+    will not load; `daily` is one it knows.
+  - >-
+    The service: `sed -i 's/nightwach.sh/nightwatch.sh/' ~/.config/systemd/user/pridwen-nightwatch.service`,
+    then `chmod +x ~/pridwen/bin/nightwatch.sh`, then
+    `systemctl --user daemon-reload`, then
+    `systemctl --user start pridwen-nightwatch.service`, then
+    `cat ~/pridwen/nightwatch/log`.
+  - >-
+    The files: `chmod 600 ~/pridwen/etc/nightwatch.conf`, then
+    `restorecon -v ~/pridwen/nightwatch/README.md`, then
+    `ls -l ~/pridwen/etc/nightwatch.conf` and
+    `ls -Z ~/pridwen/nightwatch/README.md` to confirm.
+  - >-
+    The timer: `sed -i 's/OnCalendar=nightly/OnCalendar=daily/' ~/.config/systemd/user/pridwen-nightwatch.timer`,
+    then `systemctl --user daemon-reload`, then
+    `systemctl --user enable --now pridwen-nightwatch.timer`, then
+    `systemctl --user list-timers`.
 checks:
   - id: job-ran
     type: path_contains
     path: "{home}/pridwen/nightwatch/log"
     regex: 'nightwatch ok token='
-    fail: "No `nightwatch ok` line in `~/pridwen/nightwatch/log`. Start the service by hand; `systemctl --user status pridwen-nightwatch.service` names what it could not run."
+    fail: >-
+      `~/pridwen/nightwatch/log` is {actual} and has no `nightwatch ok` line,
+      so the service has not completed a run yet.
+      `systemctl --user start pridwen-nightwatch.service` then
+      `systemctl --user status pridwen-nightwatch.service` names what it
+      could not run; fix that (the path in `ExecStart=`, then the script's
+      execute bit) and start it again.
   - id: timer-enabled
     type: unit_enabled
     unit: pridwen-nightwatch.timer
     scope: user
-    fail: "`is-enabled` says {actual} for the timer; it should be enabled so the job survives a logout."
+    fail: >-
+      `systemctl --user is-enabled pridwen-nightwatch.timer` says {actual};
+      it should say `enabled` so the job survives a logout.
+      `systemctl --user enable pridwen-nightwatch.timer` links it into
+      `timers.target.wants`.
   - id: timer-active
     type: unit_active
     unit: pridwen-nightwatch.timer
     scope: user
-    fail: "`is-active` says {actual} for the timer. `systemctl --user status pridwen-nightwatch.timer` explains a timer that refuses to load, and `enable --now` starts it once it loads."
+    fail: >-
+      `systemctl --user is-active pridwen-nightwatch.timer` says {actual};
+      it should say `active`.
+      `systemctl --user status pridwen-nightwatch.timer` explains a timer
+      that refuses to load (an `OnCalendar=` word systemd does not know
+      leaves it with no trigger); fix the word,
+      `systemctl --user daemon-reload`, then
+      `systemctl --user enable --now pridwen-nightwatch.timer`.
   - id: config-private
     type: path_mode
     path: "{home}/pridwen/etc/nightwatch.conf"
     mode: "0600"
-    fail: "`nightwatch.conf` has mode {actual}; it holds a token and should be 0600."
+    fail: >-
+      `nightwatch.conf` has mode {actual}; it holds a token and should be
+      0600, readable and writable by you alone.
+      `chmod 600 ~/pridwen/etc/nightwatch.conf` sets it.
   - id: readme-label
     type: cmd_output
     cmd: ["ls", "-Z", "{home}/pridwen/nightwatch/README.md"]
     regex: 'user_home_t'
-    fail: "`README.md` is labelled {actual}; policy says `user_home_t`, and `restorecon` puts it back."
+    fail: >-
+      `ls -Z` reports `{actual}` for `README.md`; policy says a file in your
+      home carries `user_home_t`.
+      `restorecon -v ~/pridwen/nightwatch/README.md` puts it back and prints
+      what it changed.
 cleanup: |
   systemctl --user disable --now pridwen-nightwatch.timer >/dev/null 2>&1 || true
   systemctl --user stop pridwen-nightwatch.service >/dev/null 2>&1 || true

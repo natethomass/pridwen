@@ -8,7 +8,18 @@
     command: '^sysctl\s+-w\b'
     not_sudo: true
   hint: >-
-    Writing a kernel tunable needs root: `sudo sysctl -w key=value`. `sysctl key` reads it without root, and the persistent copy belongs in `/etc/sysctl.d/`.
+    The kernel refused to change a tunable because writing one needs root. Reading is open to everyone (`sysctl key`); put `sudo` in front to write: `sudo sysctl -w key=value`.
+  why: |
+    `sysctl -w` asks the kernel to change a running setting, and the kernel only accepts
+    that from root, so it answered "permission denied on key". Reading a value is allowed
+    for everyone because it reveals nothing you could not learn another way, but a write
+    changes how the whole machine behaves, and Pridwen keeps that behind `sudo` so a
+    stray script running as you cannot loosen the hardening baseline. Whatever you set
+    with `-w` lasts only until reboot; the permanent copy lives in `/etc/sysctl.d/`.
+    Ways forward:
+      1. `sysctl key`                          read the current value, no root needed
+      2. `sudo sysctl -w key=value`            change it in the running kernel
+      3. `pridwen learn hard-01`               where the permanent values live and why
   man: [sysctl(8)]
   cooldown: 3600
   priority: 5
@@ -19,7 +30,18 @@
     command: '^sudo\s+sysctl\s+-w\s+(?P<kv>\S+)'
     exit: [0]
   hint: >-
-    That value lasts until reboot; to keep it, add `{kv}` to a file in `/etc/sysctl.d/` and run `sudo sysctl --system`. Pridwen ships its hardening values there already.
+    That change is live now but lasts only until reboot. To keep `{kv}`, put it in a file under `/etc/sysctl.d/` and run `sudo sysctl --system`; Pridwen keeps its own hardening values there.
+  why: |
+    `sysctl -w` changed the value in the running kernel and echoed it back, so the write
+    worked. At the next boot the kernel starts from its built-in defaults and reads the
+    files under `/etc/sysctl.d/` in name order, and your `-w` change is not in any of
+    them, so it is gone. That is on purpose: an experiment at the prompt should never
+    quietly become permanent. Pridwen's baseline lives in `/etc/sysctl.d/` as data so you
+    can read it, and `/etc` survives `bootc upgrade`, so a file you add there stays.
+    Ways forward:
+      1. `echo '{kv}' | sudo tee /etc/sysctl.d/99-local.conf`   write the permanent copy
+      2. `sudo sysctl --system`                                 apply every file now
+      3. `sysctl -a | grep name`                                confirm what is set
   man: [sysctl(8), sysctl.d(5)]
   cooldown: 86400
   priority: -3
@@ -30,7 +52,19 @@
     command: 'sysctl\s+-w\s+(kernel\.dmesg_restrict=0|kernel\.kptr_restrict=0|net\.ipv4\.ip_forward=1|kernel\.yama\.ptrace_scope=0|kernel\.unprivileged_bpf_disabled=0)'
     exit: any
   hint: >-
-    That setting undoes one of Pridwen's hardening defaults. Each one is a lesson: `pridwen learn hard-01` explains what it protects before you decide a lab needs it off.
+    That value turns off one of Pridwen's hardening defaults, opening a door the baseline closed. It is fine for a lab, but read what it protects first: `pridwen learn hard-01`.
+  why: |
+    You changed a kernel tunable to the value Pridwen deliberately does not ship. Each
+    of these is a small door: `dmesg_restrict=0` lets any user read kernel messages that
+    leak addresses, `kptr_restrict=0` prints kernel pointers, `ip_forward=1` turns the
+    desktop into a router, `ptrace_scope=0` lets any process attach to any other of
+    yours, and `unprivileged_bpf_disabled=0` lets ordinary users load kernel programs.
+    Pridwen treats the baseline as data so every value can be read and explained; the
+    posture panel in Academy will now report this one as drifted until it is back.
+    Ways forward:
+      1. `pridwen learn hard-01`               what each value protects
+      2. `sudo sysctl --system`                restore the baseline from `/etc/sysctl.d/`
+      3. `pridwen posture`                     see which controls have drifted
   man: [sysctl.d(5)]
   cooldown: 3600
   priority: 20
@@ -41,7 +75,18 @@
     command: '^usbguard\b'
     not_sudo: true
   hint: >-
-    USBGuard's controls need root: `sudo usbguard list-devices`. Pridwen ships it in learning mode, so new devices are allowed and recorded, not blocked, until you write a policy.
+    The USBGuard daemon only talks to root, so the command was refused. Run it as `sudo usbguard list-devices`; Pridwen ships learning mode, so devices are allowed and recorded, not blocked.
+  why: |
+    `usbguard` connects to `usbguard-daemon` over a private socket, and the daemon
+    refused the connection because you are not root, printing "IPC connect ... Permission
+    denied". The policy decides which USB devices the whole machine trusts, including your
+    keyboard, so Pridwen keeps it behind `sudo`. In learning mode every new device is
+    allowed and written down, which lets you build a real list before enforcing anything;
+    `generate-policy` turns that list into rules when you are ready.
+    Ways forward:
+      1. `sudo usbguard list-devices`                  what has been seen and allowed
+      2. `sudo usbguard generate-policy > devices.conf` rules for the current devices
+      3. `pridwen learn hard-02`                        how learning mode becomes enforcement
   man: [usbguard(1)]
   cooldown: 3600
   priority: 5
@@ -52,7 +97,18 @@
     command: '^auditctl\b'
     not_sudo: true
   hint: >-
-    The audit subsystem is root-only: `sudo auditctl -l` lists the active rules. Persistent rules live in `/etc/audit/rules.d/` and load at boot.
+    The audit subsystem is root-only, so `auditctl` was refused. `sudo auditctl -l` lists the active rules; the permanent ones live in `/etc/audit/rules.d/` and load at boot.
+  why: |
+    `auditctl` talks to the kernel's audit system, which records security events such as
+    logins, sudo use and changes to protected files. Only root may read or change the
+    rules, because the audit trail is the record of everyone's actions and must not be
+    editable by the people it records. Pridwen runs auditd by default so that record
+    exists before anything goes wrong. The rules loaded at boot come from
+    `/etc/audit/rules.d/`, and `ausearch` reads the log they produce.
+    Ways forward:
+      1. `sudo auditctl -l`                            list the rules in force
+      2. `sudo ausearch -m USER_LOGIN --start today`   read today's login records
+      3. `ls /etc/audit/rules.d/`                      where permanent rules live
   man: [auditctl(8), audit.rules(7)]
   cooldown: 3600
   priority: 5
@@ -63,7 +119,18 @@
     command: '^(sudo\s+)?(vim?|nano|tee|sed\s+-i)\s+.*(?P<path>/etc/security/pwquality\.conf)'
     exit: any
   hint: >-
-    `{path}` sets the minimum length and complexity every new password must meet. Loosening it weakens every account at once, so change it on a lab, not a daily machine.
+    `{path}` sets the length and complexity every new password must meet, for every account at once. Loosening it is a lab change, not a daily one; `pridwen learn hard-03` explains the file.
+  why: |
+    You opened `{path}`, the file that pam_pwquality reads when anyone sets a password.
+    Its `minlen`, `dcredit` and similar lines are the rules a new password must pass, and
+    because it is one file for the whole machine, loosening a line weakens every account
+    that changes its password afterwards, including the admin in `wheel`. Pridwen ships
+    it hardened and reports it in the posture panel, so a change here shows as drift.
+    Tightening it is reasonable; loosening it belongs on a Range host you are practising on.
+    Ways forward:
+      1. `grep -v '^#' {path}`                 read the settings in force
+      2. `pridwen learn hard-03`               what each control in this file protects
+      3. `pridwen posture`                     see whether this control has drifted
   man: [pwquality.conf(5), pam_pwquality(8)]
   cooldown: 86400
   priority: 10
@@ -74,7 +141,18 @@
     command: '^(sudo\s+)?faillock\b'
     exit: any
   hint: >-
-    `faillock` shows and clears failed-login counters. `sudo faillock --user name --reset` unlocks an account that hit the retry limit after a fat-fingered password.
+    `faillock` shows the failed-password counter that locks an account after three misses. `sudo faillock --user name --reset` clears it; without `sudo` it can only show your own.
+  why: |
+    pam_faillock counts wrong passwords per user and, after the limit in
+    `/etc/security/faillock.conf` (three by default), locks the account for the lockout
+    time (ten minutes by default). `faillock` prints that counter, one line per failed
+    attempt with when and from where, and a `V` in the last column for attempts that
+    still count. Pridwen keeps this on so a guessed password cannot be tried all night.
+    Reading another user's counter and resetting any counter both need root.
+    Ways forward:
+      1. `sudo faillock --user {user}`             show your own failed attempts
+      2. `sudo faillock --user name --reset`       unlock an account now
+      3. `grep -v '^#' /etc/security/faillock.conf` the limits in force
   man: [faillock(8), pam_faillock(8)]
   cooldown: 86400
   priority: 5
@@ -86,7 +164,18 @@
     exit: [127]
     probe: no_command:aide
   hint: >-
-    AIDE is not in the base image; on an immutable host `/usr` cannot change between boots anyway, which is a form of the same guarantee. `rpm-ostree db diff` shows what the image contains.
+    AIDE is not in the image. On an immutable host `/usr` cannot change between boots, which gives most of what AIDE checks; `rpm-ostree status` shows the image digest that proves it.
+  why: |
+    The shell searched PATH for `aide` and found nothing, so it printed "command not
+    found" with exit 127. AIDE takes a snapshot of system files and later reports which
+    changed, which is essential on a machine whose `/usr` can be edited. On Pridwen `/usr`
+    is a read-only image identified by a digest, replaced whole by `bootc upgrade` and
+    never edited in place, so the guarantee is structural rather than checked afterwards.
+    The trees that can still change are `/etc` and `/var`, and those are the ones to watch.
+    Ways forward:
+      1. `rpm-ostree status`                   the digest of the booted image
+      2. `rpm-ostree db diff`                  package changes in a pending upgrade
+      3. `pridwen learn hard-02`               why an immutable `/usr` replaces AIDE here
   man: [rpm-ostree(1)]
   cooldown: 86400
   priority: 10
@@ -97,7 +186,19 @@
     command: '(?P<path>/\.autorelabel)\b'
     exit: any
   hint: >-
-    Touching `/.autorelabel` forces a full SELinux relabel on the next boot, which is slow but sometimes the cleanest fix after labels drift. `sudo restorecon -Rv path` handles a single tree faster.
+    Creating `{path}` makes the next boot relabel every file for SELinux, which is slow but sometimes the cleanest fix after labels drift. For one tree, `sudo restorecon -Rv path` is faster.
+  why: |
+    A file called `{path}` is a flag: at the next boot, before anything else starts,
+    SELinux walks the whole filesystem and sets every file's label back to what policy
+    says it should be, then reboots again. That takes minutes and touches everything. It
+    is the right tool when labels are wrong in many places, for example after files were
+    copied in with labels disabled. When only one directory is wrong, `restorecon` fixes
+    that tree in seconds without a reboot. Pridwen runs SELinux enforcing, so wrong
+    labels show up as "Permission denied" that `pridwen why` can translate.
+    Ways forward:
+      1. `sudo restorecon -Rv /path`           relabel one tree now, no reboot
+      2. `sudo touch {path}`                   full relabel at next boot
+      3. `sudo rm {path}`                      cancel a relabel you did not mean
   man: [restorecon(8), fixfiles(8)]
   cooldown: 86400
   priority: 5
@@ -108,7 +209,18 @@
     command: '^(sudo\s+)?(date|timedatectl)\s+set'
     exit: any
   hint: >-
-    Setting the clock by hand fights chrony, which keeps it in sync with network time; auditing and TLS both depend on an accurate clock. `timedatectl` shows whether NTP is active.
+    Setting the clock by hand fights chrony, which keeps it matched to network time; logs and TLS both depend on that. If the zone is wrong, `timedatectl set-timezone` is the fix.
+  why: |
+    chrony adjusts the clock continuously to match trusted time servers, and
+    `timedatectl` refuses a manual `set-time` while that is on ("Automatic time
+    synchronization is enabled"). Pridwen keeps it on because an accurate clock is what
+    makes log timelines comparable across machines and what makes TLS certificate dates
+    valid; a clock that is off by hours makes every secure site look expired. Almost
+    always the real problem is the time zone, not the time.
+    Ways forward:
+      1. `timedatectl`                                     is NTP active and synchronized
+      2. `timedatectl list-timezones | grep -i city`       find your zone
+      3. `sudo timedatectl set-timezone Region/City`        set it
   man: [timedatectl(1), chronyd(8)]
   cooldown: 86400
   priority: 5

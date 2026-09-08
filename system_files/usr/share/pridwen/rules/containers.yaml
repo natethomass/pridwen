@@ -9,13 +9,16 @@
     exit: [127]
     probe: no_command:docker
   hint: >-
-    Pridwen ships Podman, not Docker, and the commands match: `podman run`, `podman ps`, `podman build`. It is rootless and daemonless, so there is no socket or service to start.
+    There is no `docker` here (exit 127). Pridwen ships Podman, and the commands match: `podman run`, `podman ps`, `podman build`. It is rootless and daemonless, so there is no service to start.
   why: |
-    Podman speaks the same CLI as Docker and reads the same images, but runs each
-    container as your user with no background daemon. That means a compromised container
-    is confined to your account, not root.
+    The shell searched PATH for `docker` and found nothing. Pridwen ships Podman instead,
+    which speaks the same command line and pulls the same images, so anything written
+    for Docker works with `podman` in its place. The difference is underneath and it is
+    a security decision: Podman runs each container as your user with no background
+    daemon, so root inside a container maps to your own uid outside and a compromised
+    container is confined to your account rather than handed host root.
     Ways forward:
-      1. `podman run -it fedora:43 bash`        a throwaway shell
+      1. `podman run --rm -it fedora:43 bash`   a throwaway shell
       2. `alias docker=podman`                  if muscle memory insists
       3. `podman ps -a`                         list containers, running or not
   man: [podman(1)]
@@ -28,7 +31,19 @@
     command: '/var/run/docker\.sock|DOCKER_HOST'
     exit: any
   hint: >-
-    There is no Docker daemon here. If a tool needs a socket, `systemctl --user enable --now podman.socket` provides a Docker-compatible one at `$XDG_RUNTIME_DIR/podman/podman.sock`.
+    There is no Docker daemon or socket here. If a tool insists on one, `systemctl --user enable --now podman.socket` provides a compatible socket at `$XDG_RUNTIME_DIR/podman/podman.sock`.
+  why: |
+    Docker runs a root daemon and every `docker` command talks to it through
+    `/var/run/docker.sock`; whoever can write that socket is effectively root. Podman
+    has no daemon, which is why the path does not exist here. Some tools were written
+    against the Docker API and need a socket anyway, and Podman can offer one that is
+    still rootless: `podman.socket` is a user unit that answers the same API from your
+    runtime directory. Point the tool at it with `DOCKER_HOST` and it will not know the
+    difference.
+    Ways forward:
+      1. `systemctl --user enable --now podman.socket`                start the compatible socket
+      2. `export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`  tell the tool where it is
+      3. `podman system service --help`                               what the socket serves
   man: [podman-system-service(1)]
   cooldown: 86400
   priority: 15
@@ -39,7 +54,18 @@
     command: '^podman\s+run\s+'
     exit: [0]
   hint: >-
-    That container ran as your user, mapped into a range of subordinate uids, so root inside it is not root on the host. `podman ps -a` shows it; `--rm` removes it on exit.
+    That container ran as your user, mapped into a range of subordinate uids, so root inside it is not root on the host. `podman ps -a` shows it; `--rm` on the run removes it on exit.
+  why: |
+    Your first container ran rootless: Podman started it inside a user namespace where
+    uid 0 is your own uid and every other uid inside maps to a subordinate range from
+    `/etc/subuid` that owns nothing on the host. That is why Pridwen chose Podman: a
+    process that escapes its container is still an ordinary user to the kernel. Unless
+    you passed `--rm`, the stopped container is still in the list and can be started
+    again with its filesystem intact, or removed with `podman rm`.
+    Ways forward:
+      1. `podman ps -a`                                  see the container and its exit status
+      2. `podman unshare cat /proc/self/uid_map`         the uid mapping in use
+      3. `pridwen learn ctr-01`                          what rootless and daemonless buy you
   man: [podman-run(1)]
   cooldown: 604800
   priority: -10
@@ -50,11 +76,15 @@
     command: '^podman\s+run\s+.*-v\s+(?P<src>\S+):(?P<dst>[^:\s]+)\s'
     exit: any
   hint: >-
-    A bind mount without a label suffix can be denied by SELinux. Add `:Z` to relabel it for this container alone, or `:z` to share it, as in `-v {src}:{dst}:Z`.
+    A bind mount without a label suffix can be denied by SELinux and looks like "Permission denied" inside. Add `:Z` to relabel it for this container, or `:z` to share it: `-v {src}:{dst}:Z`.
   why: |
-    Host files carry labels the container's SELinux type may not read. `:Z` relabels the
-    source to a private container label; `:z` uses a shared one. Without either, the
-    denial looks like a permission error inside the container.
+    SELinux is enforcing on Pridwen, and it confines a container to files labelled for
+    containers. `{src}` carries the label of your home or the system, so a process
+    inside the container is refused, and the refusal appears as an ordinary "Permission
+    denied" even though ownership looks right. `:Z` asks Podman to relabel the source
+    with a label private to this container; `:z` uses a shared label several containers
+    may use. This is the same rule that stops a compromised container reading the rest
+    of your home, so it is worth keeping rather than turning off.
     Ways forward:
       1. `-v {src}:{dst}:Z`             private to this container
       2. `-v {src}:{dst}:z`             shared between containers
@@ -69,7 +99,19 @@
     command: '^podman\s+run\s+.*-p\s+(?P<port>[0-9]{1,3}):'
     exit: any
   hint: >-
-    A rootless container cannot bind host ports below 1024 by default. Map to a high port like `-p 8080:80`, or lower the threshold with `sysctl net.ipv4.ip_unprivileged_port_start`.
+    A rootless container cannot listen on host port {port}, because ports below 1024 are reserved for root. Map to a high port such as `-p 8080:80`, or lower the limit with the `ip_unprivileged_port_start` sysctl.
+  why: |
+    The kernel reserves ports below 1024 for root, so that an ordinary user cannot
+    impersonate a system service such as a web server on port 80. A rootless container
+    is an ordinary user to the kernel, so binding {port} is refused with "cannot expose
+    privileged port". Mapping a high host port to the container's low one, `-p 8080:80`,
+    keeps the rule intact and works for anything you reach by URL. Lowering
+    `net.ipv4.ip_unprivileged_port_start` lifts the rule for every user on the machine,
+    which is a hardening trade-off to make knowingly.
+    Ways forward:
+      1. `-p 8080:80`                                                 use a high host port
+      2. `sysctl net.ipv4.ip_unprivileged_port_start`                 read the current limit
+      3. `pridwen learn hard-01`                                      before changing a sysctl
   man: [podman-run(1)]
   cooldown: 3600
   priority: 5
@@ -80,7 +122,19 @@
     command: '^sudo\s+podman\s+run\b'
     exit: any
   hint: >-
-    `sudo podman` runs the container as real root, which drops the isolation rootless mode gives you. Rootless (`podman` without sudo) is the default here; use sudo only when a container genuinely needs host root.
+    `sudo podman` runs the container as real root and gives up the isolation rootless mode provides. Plain `podman` is the default here; reach for sudo only when a container truly needs host root.
+  why: |
+    With `sudo`, Podman runs as root and so does the container: uid 0 inside is uid 0
+    on the host, and a process that escapes has everything. Rootless Podman, the default
+    on Pridwen, maps root inside to your own account, which is the security reason it
+    was chosen. Rootful and rootless Podman also keep separate image stores and
+    container lists, so an image you pulled as yourself is not visible under `sudo`,
+    which surprises people. The genuine reasons for rootful are few: binding a port below
+    1024 without changing the sysctl, or a container that must manage host devices.
+    Ways forward:
+      1. `podman run ...`                      the same command without sudo
+      2. `podman ps -a`                        your containers, as opposed to root's
+      3. `sudo podman ps -a`                   what is running rootful, to clean up
   man: [podman(1)]
   cooldown: 86400
   priority: 10
@@ -92,7 +146,19 @@
     exit: [127]
     probe: no_command:docker-compose
   hint: >-
-    Use `podman compose` (or `podman-compose`) for the same YAML. For services that should survive a reboot, `podman generate systemd` or a Quadlet `.container` file is the Pridwen way.
+    `docker-compose` is not here (exit 127). `podman compose` reads the same YAML for a quick start; for a service that should survive a reboot, a Quadlet `.container` file is the Pridwen way.
+  why: |
+    The shell found no `docker-compose`, and there is no Docker here to compose for.
+    `podman compose` runs the same `compose.yaml` through a compose provider, which is
+    the fastest way to bring up a project written for Docker. For something that should
+    start at boot and be managed like any service, Pridwen prefers a Quadlet: a
+    `.container` file under `~/.config/containers/systemd/` that systemd turns into a
+    real unit, with `systemctl status`, a journal, and dependencies. It replaces compose
+    for persistent services rather than reimplementing it.
+    Ways forward:
+      1. `podman compose up`                      the same YAML, rootless
+      2. `pridwen learn ctr-03`                   write a Quadlet `.container` file
+      3. `systemctl --user daemon-reload`         generate the unit from it
   man: [podman-compose(1), quadlet(5)]
   cooldown: 86400
   priority: 10
@@ -103,7 +169,19 @@
     command: '(?P<path>/etc/containers/systemd/\S+\.container)|\.config/containers/systemd/'
     exit: any
   hint: >-
-    Quadlet files turn a container into a systemd unit at boot, which is how Pridwen prefers to run persistent containers. `systemctl daemon-reload` regenerates the unit after you edit one.
+    A Quadlet `.container` file becomes a systemd service at `daemon-reload`, which is how Pridwen runs persistent containers. After editing one, reload, then `systemctl start` the service of the same name.
+  why: |
+    Quadlet is a systemd generator: at every `daemon-reload` it reads `.container` files
+    from `~/.config/containers/systemd/` (user) or `/etc/containers/systemd/` (system)
+    and writes a matching `.service` unit. The container then has the same `status`,
+    journal and dependency handling as any other service, and starts at boot or login
+    through its `[Install]` section. Because the unit is generated, you do not `enable`
+    it yourself, and a file that fails to parse produces no unit at all, which is the
+    usual reason for "Unit not found" after an edit.
+    Ways forward:
+      1. `systemctl --user daemon-reload`                   regenerate the unit
+      2. `/usr/libexec/podman/quadlet -dryrun -user`        show what it would generate, and any errors
+      3. `systemctl --user status name.service`             the container as a service
   man: [quadlet(5), podman-systemd.unit(5)]
   cooldown: 86400
   priority: 5
@@ -114,7 +192,19 @@
     command: '^podman\s+pull\s+(?P<name>[^/]+)\s*$'
     exit: any
   hint: >-
-    A short name like `{name}` is resolved against the registries in `/etc/containers/registries.conf`. A fully qualified name such as `docker.io/library/{name}` avoids the ambiguity.
+    `{name}` is a short name, looked up across the registries in `/etc/containers/registries.conf`, so it could match the wrong one. The full name, such as `docker.io/library/{name}`, is unambiguous.
+  why: |
+    An image name without a registry in front, like `{name}`, is a short name. Podman
+    resolves it using the aliases and the unqualified-search list in
+    `/etc/containers/registries.conf`, and when more than one registry could match it
+    may prompt you to choose. Fedora provides aliases for common images so `fedora`
+    resolves to the Fedora registry, but for anything else a fully qualified name is
+    safer: it says exactly where the image comes from, which matters when you are
+    deciding what code to run on your machine.
+    Ways forward:
+      1. `podman pull docker.io/library/{name}`     the fully qualified form
+      2. `podman images`                            what you have, with full names
+      3. `grep -v '^#' /etc/containers/registries.conf`  the search order in use
   man: [podman-pull(1), containers-registries.conf(5)]
   cooldown: 86400
   priority: 5

@@ -8,15 +8,19 @@
     command: '^mount\s+\S+'
     not_sudo: true
   hint: >-
-    `mount` needs root unless `/etc/fstab` marks the entry `user`. For a USB stick, `udisksctl mount -b /dev/sdX1` mounts it as you, the same way GNOME Files does.
+    `mount` needs root unless `/etc/fstab` marks the entry `user`, so it refused. For a USB stick, `udisksctl mount -b /dev/sdX1` mounts it as you, the same way GNOME Files does.
   why: |
-    Mounting changes the namespace every process sees, so it is a root operation. The
-    desktop gets around that through udisks, which mounts removable media under
-    `/run/media/$USER/` on your behalf and asks polkit for permission.
+    Mounting attaches a filesystem to a directory in the tree that every process on the
+    machine shares, so the kernel treats it as a root operation and `mount` answered `only
+    root can do that`. The desktop gets around that through udisks, a service that mounts
+    removable media under `/run/media/{user}/` on your behalf after asking polkit, the
+    desktop's permission service, whether you are allowed; a person at the machine is. That
+    keeps `sudo` out of everyday USB use while leaving system mounts to root.
     Ways forward:
-      1. `lsblk -f`                                     find the device and filesystem
-      2. `udisksctl mount -b /dev/sdb1`                 as your user, no sudo
-      3. `sudo mount /dev/sdb1 /mnt`                    the manual way, until reboot
+      1. `lsblk -f`                                     find the device, its filesystem type and label
+      2. `udisksctl mount -b /dev/sdb1`                 mount it as your user, no sudo, under /run/media
+      3. `sudo mount /dev/sdb1 /mnt`                    the manual way, lasts until reboot
+      4. `pridwen explain mount`                        the fields and options
   man: [mount(8), udisksctl(1), fstab(5)]
   cooldown: 3600
   priority: 5
@@ -27,7 +31,19 @@
     command: '^(sudo\s+)?umount\s+(?P<path>\S+)\s*$'
     exit: [32]
   hint: >-
-    "Target is busy" means a process still has a file or its current directory under {path}. `fuser -vm {path}` names it; a shell that did `cd` there counts.
+    `target is busy` means a process still has a file open or its current directory under {path}, so the kernel will not detach it. `fuser -vm {path}` names the process; a shell that did `cd` there counts.
+  why: |
+    `umount` asked the kernel to detach {path}, and the kernel refused with `target is busy`
+    because something is still using it: a file open for reading or writing, a program
+    running from it, or a shell whose current directory is inside it. Detaching anyway
+    would pull the filesystem out from under that process and corrupt whatever it was
+    writing, so the refusal is protection, not obstruction. The fix is to find the process,
+    close or leave, and try again. Exit 32 is `umount`'s code for this case.
+    Ways forward:
+      1. `fuser -vm {path}`                   list the processes using the mount, verbose
+      2. `cd ~`                               leave the directory if your own shell is the culprit
+      3. `sudo umount {path}`                 try again once nothing is using it
+      4. `udisksctl unmount -b /dev/sdb1`     for removable media, the desktop's way
   man: [umount(8), fuser(1)]
   cooldown: 3600
   priority: 8
@@ -38,7 +54,19 @@
     command: '^(sudo\s+)?du\s+(-\S+\s+)*/\s*$'
     exit: any
   hint: >-
-    `du` from `/` walks every file, including `/proc` and the read-only image. `sudo du -xsh /var/* /home/* 2>/dev/null | sort -h` finds where the space actually went.
+    `du` from `/` walks every file, including `/proc` and the read-only image, and takes minutes. `sudo du -xsh /var/* /home/* 2>/dev/null | sort -h` finds where the space actually went.
+  why: |
+    `du` totals every file under the directory you name, and starting at `/` means every
+    file on the machine: the read-only image under `/usr`, the kernel's fake files under
+    `/proc`, and every mounted filesystem. On Pridwen that is wasted work, because the image
+    never grows and the only things that can fill the disk live under `/var`: your home at
+    `/var/home`, logs, container images, and Flatpak apps. Staying on one filesystem with
+    `-x` and starting at `/var` answers the real question in seconds.
+    Ways forward:
+      1. `df -h`                                            how full each filesystem is, before hunting
+      2. `sudo du -xsh /var/* 2>/dev/null | sort -h`        the largest directories under /var, biggest last
+      3. `du -sh {home}`                                    your own home directory's total
+      4. `pridwen explain du`                               the `-x`, `-s` and `-h` flags
   man: [du(1), sort(1)]
   cooldown: 86400
   priority: 10
@@ -50,7 +78,19 @@
     exit: [1]
     not_sudo: true
   hint: >-
-    `du` exits 1 when some directories were closed to you, but the totals for what it could read are fine. Append `2>/dev/null` to hide the noise, or `sudo du` for the full picture.
+    `du` exited 1 because some directories were closed to you, but the totals for what it could read are correct. Append `2>/dev/null` to hide the noise, or use `sudo du` for the full picture.
+  why: |
+    `du` met directories it may not enter, printed `cannot read directory ... Permission
+    denied` for each, and finished with exit 1 to say that its total is incomplete. The
+    numbers it printed are still right for everything it could read. This is ordinary file
+    permissions doing their job: directories like `/var/lib/private` belong to root or to a
+    service, and your user is not meant to see inside. Hiding the errors keeps the useful
+    output readable; running as root includes the closed directories in the total.
+    Ways forward:
+      1. `du -sh DIR 2>/dev/null`           same command, errors discarded, totals for what you can read
+      2. `sudo du -sh DIR`                  the full total, including root-only directories
+      3. `ls -ld DIR`                       see who owns the directory that refused you
+      4. `pridwen explain du`               the `-s` and `-h` flags
   man: [du(1)]
   cooldown: 3600
 - id: store-disk-tools-nosudo
@@ -60,7 +100,20 @@
     command: '^(fdisk|sfdisk|gdisk|cfdisk|parted|mkfs\S*|wipefs|cryptsetup|blkid|smartctl)\b'
     not_sudo: true
   hint: >-
-    `{cmd}` talks to block devices directly, which needs root. Look first with `lsblk -f`, which does not; then `sudo {cmd}` when you mean it.
+    `{cmd}` opens block devices directly, which needs root, so it was refused. Look first with `lsblk -f`, which does not need sudo; then `sudo {cmd}` when you are sure of the device.
+  why: |
+    `{cmd}` opens a disk device under `/dev` to read or change it at the block level, below
+    any filesystem, and the kernel only lets root do that, so the tool refused with
+    `Permission denied` or `access denied`. That gate exists because a wrong device name
+    with one of these tools erases a disk with no undo. Pridwen wants you to look before
+    you touch: `lsblk` reads the same layout as an ordinary user and shows the disk,
+    partition, LUKS `crypt` layer and filesystem as a tree, which is the check to do before
+    any `sudo` disk command.
+    Ways forward:
+      1. `lsblk -f`                     every disk, partition and filesystem with types and UUIDs, no root needed
+      2. `findmnt /`                    which device and subvolume back the root
+      3. `sudo {cmd} ...`               the same command as root, once the device is confirmed
+      4. `pridwen explain lsblk`        the columns and the `-f` flag
   man: [lsblk(8), fdisk(8)]
   cooldown: 3600
   priority: 5
@@ -71,7 +124,20 @@
     command: '^sudo\s+mkfs\S*\s+.*(?P<dev>/dev/\S+)'
     exit: any
   hint: >-
-    `mkfs` erases everything on {dev}. Before the next one, `lsblk -f {dev}` to confirm it is the device you think and that nothing is mounted from it.
+    `mkfs` writes a new, empty filesystem over {dev}, erasing everything there without asking. Before the next one, `lsblk -f {dev}` confirms it is the device you think and that nothing is mounted from it.
+  why: |
+    `mkfs` formats a device: it writes a fresh filesystem structure over {dev}, and every
+    file that was there becomes unreachable the moment it starts. It does not ask for
+    confirmation, and a device name like `/dev/sdb` can point at a different disk than it
+    did yesterday, because names are assigned in the order the kernel finds hardware. The
+    habit that prevents disasters is to read `lsblk -f` immediately before, check the size,
+    label and any mount point, and only then format. On Pridwen the system disk is the LUKS
+    container, and nothing in a lesson should ever format it.
+    Ways forward:
+      1. `lsblk -f {dev}`               size, type, label and mount point of what you just formatted or are about to
+      2. `findmnt {dev}`                is anything mounted from it right now
+      3. `sudo wipefs -n {dev}`         `-n` dry run: show existing filesystem signatures without touching them
+      4. `pridwen explain mkfs`         the variants and their flags
   man: [mkfs(8), lsblk(8)]
   cooldown: 86400
   priority: 30
@@ -82,7 +148,20 @@
     command: '^(sudo\s+)?dd\s+.*of=(?P<dev>/dev/\S+)'
     exit: any
   hint: >-
-    `dd` writes straight over {dev} with no confirmation. Check `lsblk` twice before using it on a disk, and prefer GNOME Disks or `podman` volumes for anything that is not an installer image.
+    `dd` writes raw bytes straight over {dev} with no confirmation and no undo. Check `lsblk` twice before pointing it at a disk, and prefer GNOME Disks or `podman` volumes for anything that is not an installer image.
+  why: |
+    `dd` copies bytes from `if=` to `of=` with no idea what they mean, and when `of=` is a
+    disk device like {dev} it overwrites the partition table, the LUKS header, and every
+    file, starting at the first byte. There is no prompt and no recovery. Its one everyday
+    use on a desktop is writing an installer image to a USB stick, and even then a device
+    name that shifted by one letter means writing over your data disk. Pridwen's system disk
+    is protected by nothing but your attention here: `lsblk` shows sizes and mount points,
+    and the target should have neither a mount point nor a familiar size.
+    Ways forward:
+      1. `lsblk -f`                                     confirm {dev} is the stick: right size, no mount point
+      2. `sudo dd if=IMAGE.iso of={dev} bs=4M status=progress oflag=sync`   the safe form, with progress
+      3. `gnome-disks`                                  Restore Disk Image in GNOME Disks does the same with a device picker
+      4. `pridwen explain dd`                           `if=`, `of=`, `bs=` and `status=`
   man: [dd(1), lsblk(8)]
   cooldown: 86400
   priority: 40
@@ -95,12 +174,18 @@
   hint: >-
     A bad line in `/etc/fstab` drops the next boot into emergency mode. `sudo findmnt --verify` checks the syntax and `sudo mount -a` tries every entry now, while you can still fix it.
   why: |
-    systemd turns each fstab line into a mount unit and waits for it at boot. A typo or a
-    missing device means a failed unit and an emergency shell. Testing now is cheap.
+    You just changed `/etc/fstab`, the table of filesystems mounted at every boot. At
+    startup systemd turns each line into a mount unit and waits for it, so a typo, a wrong
+    UUID, or a drive that is not plugged in means a failed unit and an emergency shell
+    instead of the login screen. Testing now costs seconds and the same tools that will run
+    at boot can run from your terminal. On Pridwen `/etc` is merged three ways at each
+    `bootc upgrade`, so the line you added will survive updates, which makes checking it
+    once worth doing properly. `nofail` tells systemd an optional drive may be absent.
     Ways forward:
-      1. `sudo findmnt --verify`               syntax and device check
-      2. `sudo mount -a`                       mount everything not yet mounted
-      3. add `nofail` to optional drives       so their absence does not block boot
+      1. `sudo findmnt --verify`               parse fstab and check each device exists; look for `Success`
+      2. `sudo mount -a`                       mount every entry not yet mounted, exactly as boot would
+      3. `findmnt`                             the full tree of what is mounted now, to confirm the new one
+      4. add `nofail` to optional drives       so a missing drive does not block boot
   man: [fstab(5), findmnt(8), mount(8)]
   cooldown: 3600
   priority: 10
@@ -111,7 +196,20 @@
     command: '^(sudo\s+)?(fsck\S*|btrfs\s+check)\s+.*(?P<dev>/dev/\S+)'
     exit: any
   hint: >-
-    Never run a filesystem check on something that is mounted; it can make things worse. `findmnt {dev}` tells you, and btrfs prefers `btrfs scrub start /` while mounted anyway.
+    Never run a filesystem check on something that is mounted; it can turn a small problem into a lost filesystem. `findmnt {dev}` tells you, and btrfs prefers `btrfs scrub start /` while mounted anyway.
+  why: |
+    `fsck` and `btrfs check` read and repair filesystem structures directly on {dev}, below
+    the kernel's view of the mounted filesystem. If the filesystem is mounted at the same
+    time, the kernel keeps writing while the checker rewrites, and the two disagree about
+    what is on disk; the usual result is worse damage than the checker was meant to fix.
+    Pridwen's root is btrfs inside LUKS, and btrfs is designed to be checked while running:
+    `scrub` verifies every checksum and repairs from a second copy where one exists. An
+    offline `btrfs check` is a last resort from a live USB, not a routine command.
+    Ways forward:
+      1. `findmnt {dev}`                        is it mounted; if this prints anything, do not run fsck on it
+      2. `sudo btrfs scrub start /`             verify checksums on the running root, safely
+      3. `sudo btrfs scrub status /`            progress and any errors found
+      4. `sudo btrfs device stats /`            error counters per device
   man: [fsck(8), btrfs-check(8), btrfs-scrub(8)]
   cooldown: 86400
   priority: 25

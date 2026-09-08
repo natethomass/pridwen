@@ -7,7 +7,21 @@
     command: '^auditctl\b'
     not_sudo: true
   hint: >-
-    Audit rules are kernel state and need root: `sudo auditctl -l` lists them. Persistent rules go in `/etc/audit/rules.d/`.
+    `auditctl` refused because audit rules are kernel state and only root may read or change them. Run it as `sudo auditctl -l` to list rules; permanent ones go in `/etc/audit/rules.d/`.
+  why: |
+    You ran `auditctl` as yourself and the kernel refused: `You must be root to
+    run this program.` Audit rules live inside the kernel, and if an ordinary
+    account could list or change them, a compromised account could quietly stop
+    the record of what it did. Pridwen ships auditd running with a small
+    hardening rule set, and keeps both the rules and the log root-only, so the
+    audit trail is one thing an intruder with your password cannot edit. Rules
+    loaded with `auditctl` last until reboot; a file in `/etc/audit/rules.d/`
+    makes one permanent and survives `bootc upgrade` because `/etc` is merged.
+    Ways forward:
+      1. `sudo auditctl -l`                                          list the rules loaded now
+      2. `sudo auditctl -w /etc/passwd -p wa -k passwd_changes`      watch a file for writes and attribute changes
+      3. `sudo ausearch -k passwd_changes -ts today -i`              find what the watch recorded
+      4. `pridwen learn detect-01`                                   watches, keys and rules.d explained
   man: [auditctl(8), audit.rules(7)]
   cooldown: 3600
   priority: 5
@@ -19,7 +33,23 @@
     exit: [127]
     probe: no_command:{cmd}
   hint: >-
-    `{cmd}` is not in the image. On a bootc host `/usr` is already verified by the image digest; for `/etc` and `/var`, `rpm-ostree status` plus `ostree admin config-diff` shows drift, and AIDE can be layered for a Range host.
+    `{cmd}` is not in the Pridwen image. `/usr` is already verified by the image digest; for `/etc` and `/var` drift, compare saved baselines with `diff` (`pridwen learn detect-02`), or layer `{cmd}` on a Range host.
+  why: |
+    The shell searched your PATH and found no `{cmd}`: exit 127, command not
+    found. File integrity checkers such as AIDE work by hashing every file and
+    comparing later, which on a normal distribution is the only way to know
+    whether `/usr` was tampered with. Pridwen does not need that for `/usr`,
+    because the whole system tree comes from a signed container image and
+    `bootc` verifies its digest, so the base cannot drift between boots. What
+    can drift is `/etc`, `/var`, accounts and listeners, and the Detection node
+    teaches the same idea with plain tools: save a known-good capture and `diff`
+    a fresh one against it. On a Rocky Range host you own, `dnf install aide`
+    works and is worth trying once.
+    Ways forward:
+      1. `ostree admin config-diff`                                  what changed in /etc against the image
+      2. `sudo ss -tulnp | sort | diff {home}/baseline/listeners.txt -`   new or missing listeners
+      3. `getent passwd | sort | diff {home}/baseline/accounts.txt -`     new accounts
+      4. `pridwen learn detect-02`                                   baselines and anomalies
   man: [ostree(1), rpm-ostree(1)]
   cooldown: 86400
   priority: 10

@@ -6,54 +6,118 @@ required: true
 minutes: 15
 target: host
 brief: |
-  The wifi icon says connected, and that is all it says. When a page will not
-  load, the icon cannot tell you whether the address is missing, the route is
-  gone, or the name never resolved. Four commands can, and each answers one of
-  those questions.
+  The wifi icon says connected, and that is all it says. When a page will
+  not load, the icon cannot tell you whether the address is missing, the
+  route is gone, or the name never resolved. Four commands can, and each
+  answers one of those questions. `ip addr` shows every interface (a network
+  connection the kernel knows, such as your wifi card) with its IP address
+  and prefix length, the `/24` after an address that says how much of it
+  names the local network. `ip route` shows the routing table, the list of
+  rules that decide where a packet goes; its `default` line names the
+  gateway, the machine every packet leaves through when it is not for your
+  own network. `ss` (socket statistics) lists sockets, the endpoints
+  programs open to talk over the network, and a listening socket is one
+  waiting for someone to connect in. `resolvectl` shows the resolver, the
+  part of the system that turns names like `flathub.org` into addresses by
+  asking a DNS server, which on Pridwen it does over TLS so nobody on the
+  cafe wifi can read the questions.
 
-  Draw the map of your own connection while it works, so you know what normal
-  looks like. Save the one-line-per-interface address listing and find your
-  own address with its prefix length. Save the routing table and copy out the
-  address of the default gateway, the machine every packet leaves through when
-  it is not for your own network. Save the list of sockets that are listening
-  on this host, and notice that nothing is waiting for ssh, because Pridwen
-  ships with it off. Last, save the resolver status and find the DNS server
-  that turns names into addresses for you.
+  Draw the map of your own connection while it works, so you know what
+  normal looks like. Save the one-line-per-interface address listing and
+  find your own address with its prefix length. Save the routing table and
+  copy out the gateway's address. Save the list of listening sockets, and
+  notice that nothing is waiting on port 22 for ssh, because Pridwen ships
+  with it off. Last, save the resolver status and find the DNS server that
+  answers you.
+
+  On a job "the network is down" is never the whole diagnosis; these four
+  commands turn it into "no address", "no route" or "no DNS", each with its
+  own fix. Done looks like five answer files. The checker reads them and
+  looks for an address with a prefix, a `default via` line, a bare gateway
+  address, `tcp` and `udp` socket lines, and the words `DNS Server`.
 steps:
-  - Save the one-line-per-interface address listing in `~/pridwen/answers/ip-addr.txt` and find your address and prefix length.
-  - Save the routing table in `~/pridwen/answers/ip-route.txt`, then write only the default gateway's address in `~/pridwen/answers/gateway.txt`.
-  - Save the listening TCP and UDP sockets, numerically, in `~/pridwen/answers/ss-listen.txt`.
-  - Save the resolver status in `~/pridwen/answers/resolvectl.txt` and find which DNS server answers you.
+  - >-
+    Print the brief address listing with `ip -br addr` and save it in
+    `~/pridwen/answers/ip-addr.txt`. Expect one line per interface, with
+    `lo` at `127.0.0.1/8` and your real interface `UP` with an address like
+    `192.168.1.42/24`.
+  - >-
+    Print the routing table with `ip route` and save it in
+    `~/pridwen/answers/ip-route.txt`, then write only the gateway's address
+    from the `default via` line in `~/pridwen/answers/gateway.txt`. Expect
+    one address, often ending in `.1`.
+  - >-
+    List the listening TCP and UDP sockets numerically with `ss` and save
+    them in `~/pridwen/answers/ss-listen.txt`. Expect a short table and no
+    line with `:22`.
+  - >-
+    Print the resolver status with `resolvectl` and save it in
+    `~/pridwen/answers/resolvectl.txt`, then find the DNS server named
+    there. Expect a `Current DNS Server:` line under your interface.
 hints:
-  - "`ip -br addr` and `ip route` are the two views; the routing table has a line starting `default via`."
-  - "`ss -tuln` lists listening sockets numerically; `-p` would add the owning process for your own sockets."
-  - "`resolvectl status` shows the DNS servers per link; the `Current DNS Server` line is the one in use."
+  - >-
+    `ip -br addr` (`-br` is brief: one line per interface) and `ip route`
+    are the two views of the connection; the routing table has a line
+    starting `default via` followed by the gateway's address. `ss -tuln`
+    lists listening sockets: `-t` TCP, `-u` UDP, `-l` listening only, `-n`
+    numeric, so ports show as numbers not names. `resolvectl status` shows
+    the DNS servers per link, and `Current DNS Server` is the one in use.
+  - >-
+    `>` sends output into a file. To cut the gateway out of the routing
+    table, `awk '/^default/ {print $3}'` keeps the lines that start with
+    `default` and prints their third word, which after `default via` is the
+    address. `grep default` would show the whole line; `awk` picks the
+    column.
+  - >-
+    `ip -br addr > ~/pridwen/answers/ip-addr.txt`, then
+    `ip route > ~/pridwen/answers/ip-route.txt`, then
+    `ip route | awk '/^default/ {print $3}' > ~/pridwen/answers/gateway.txt`,
+    then `ss -tuln > ~/pridwen/answers/ss-listen.txt`, then
+    `resolvectl status > ~/pridwen/answers/resolvectl.txt`.
 checks:
   - id: ip-addr
     type: path_contains
     path: "{home}/pridwen/answers/ip-addr.txt"
     regex: '\d+\.\d+\.\d+\.\d+/\d+'
-    fail: "`ip-addr.txt` should contain an IPv4 address with its prefix length, like `192.168.1.42/24`."
+    fail: >-
+      `ip-addr.txt` is {actual} and holds no IPv4 address with a prefix
+      length, like `192.168.1.42/24`.
+      `ip -br addr > ~/pridwen/answers/ip-addr.txt` saves the listing; if no
+      interface shows an address, the machine is not connected.
   - id: ip-route
     type: path_contains
     path: "{home}/pridwen/answers/ip-route.txt"
     regex: '^default via'
-    fail: "`ip-route.txt` should contain the routing table, with a line starting `default via`. If there is none, this machine has no route out."
+    fail: >-
+      `ip-route.txt` is {actual} and has no line starting `default via`.
+      `ip route > ~/pridwen/answers/ip-route.txt` saves the table; if the
+      table itself has no default line, this machine has no route out and
+      cannot reach the internet.
   - id: gateway
     type: path_contains
     path: "{home}/pridwen/answers/gateway.txt"
     regex: '^\d+\.\d+\.\d+\.\d+\s*$'
-    fail: "`gateway.txt` should hold only the gateway's IPv4 address on its own line."
+    fail: >-
+      `gateway.txt` is {actual} and does not hold just the gateway's IPv4
+      address on its own line.
+      `ip route | awk '/^default/ {print $3}' > ~/pridwen/answers/gateway.txt`
+      writes only that address.
   - id: ss-listen
     type: path_contains
     path: "{home}/pridwen/answers/ss-listen.txt"
     regex: '^(tcp|udp)\s+(LISTEN|UNCONN)'
-    fail: "`ss-listen.txt` should be the numeric listing from `ss`, with `tcp`/`udp` and `LISTEN`/`UNCONN` columns."
+    fail: >-
+      `ss-listen.txt` is {actual} and does not look like the numeric `ss`
+      listing, whose lines start with `tcp` or `udp` and then `LISTEN` or
+      `UNCONN`. `ss -tuln > ~/pridwen/answers/ss-listen.txt` saves it.
   - id: resolvectl
     type: path_contains
     path: "{home}/pridwen/answers/resolvectl.txt"
     regex: 'DNS Server'
-    fail: "`resolvectl.txt` should be the output of `resolvectl status`, which names the DNS servers for each link."
+    fail: >-
+      `resolvectl.txt` is {actual} and does not contain the words
+      `DNS Server`. `resolvectl status > ~/pridwen/answers/resolvectl.txt`
+      saves the resolver's view, which names the DNS servers for each link.
 cleanup: |
   rm -f ~/pridwen/answers/ip-addr.txt ~/pridwen/answers/ip-route.txt ~/pridwen/answers/gateway.txt
   rm -f ~/pridwen/answers/ss-listen.txt ~/pridwen/answers/resolvectl.txt

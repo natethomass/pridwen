@@ -8,14 +8,21 @@
     command: '^(useradd|adduser|userdel|usermod|groupadd|groupdel|groupmod|gpasswd|chage)\b'
     not_sudo: true
   hint: >-
-    Account changes write to `/etc/passwd`, `/etc/shadow` and `/etc/group`, which only root may edit. `sudo {cmd} ...` is the form.
+    Account changes write to `/etc/passwd`, `/etc/shadow` and `/etc/group`, which only root may edit, so `{cmd}` refused as yourself.
+    `sudo {cmd} ...` is the form; `id name` afterwards confirms the result without root.
   why: |
-    Creating or changing users touches the files that define who exists on the machine.
-    Those are root-owned by design, so the tools refuse without root.
+    Creating or changing an account edits the three files that define who exists on the
+    machine and what they may do: `/etc/passwd` for names and uids, `/etc/shadow` for
+    password hashes, and `/etc/group` for group membership. Those are owned by root and,
+    in the case of `/etc/shadow`, readable by nobody else, because anyone who could edit
+    them could make themselves an administrator. The account tools therefore refuse to run
+    without root. On Pridwen root itself is locked, so the way to act as root is `sudo`
+    with your own password, which the journal records.
     Ways forward:
-      1. `sudo useradd -m -c "Full Name" name`   create with a home directory
+      1. `sudo useradd -m -c "Full Name" name`   create an account with a home directory
       2. `sudo passwd name`                       give it a password
-      3. `id name`                                confirm it exists (no root needed)
+      3. `sudo usermod -aG wheel name`            append it to a group, keeping the others
+      4. `id name`                                confirm it exists, no root needed
   man: [useradd(8), usermod(8), passwd(1)]
   cooldown: 3600
   priority: 10
@@ -26,7 +33,21 @@
     command: '^sudo\s+useradd\s+.*(?P<name>[a-z_][a-z0-9_-]*)\s*$'
     exit: [0]
   hint: >-
-    `{name}` exists but has no password yet, so nobody can log in as them. `sudo passwd {name}` sets one; `id {name}` shows uid and groups.
+    `{name}` now exists but has no password yet, so nobody can log in as them until you set one.
+    `sudo passwd {name}` sets it; `id {name}` shows the uid and groups.
+  why: |
+    `useradd` printed nothing, which on Linux means it worked: a line in `/etc/passwd`
+    with the next free uid, a private group of the same name in `/etc/group`, a home
+    directory copied from `/etc/skel`, and a locked entry in `/etc/shadow`. A new account
+    deliberately starts without a usable password so that nothing can log in as it before
+    the administrator decides how. `passwd` sets one, asking twice and showing nothing as
+    you type. Group membership beyond the private group, such as `wheel` for sudo, is a
+    separate step with `usermod -aG`.
+    Ways forward:
+      1. `sudo passwd {name}`                set a password so the account can log in
+      2. `id {name}`                         the uid, gid and groups it was given
+      3. `getent passwd {name}`              the full seven-field entry
+      4. `sudo usermod -aG wheel {name}`     add it to wheel if it should be able to sudo
   man: [useradd(8), passwd(1), id(1)]
   cooldown: 86400
   priority: -5
@@ -37,7 +58,19 @@
     command: '^sudo\s+useradd\s+(?!.*(\s-m\b|--create-home))'
     exit: [0]
   hint: >-
-    Fedora's `useradd` creates a home directory by default (`CREATE_HOME yes` in `/etc/login.defs`), but `-m` says so explicitly and works everywhere.
+    Fedora's `useradd` creates a home directory by default (`CREATE_HOME yes` in `/etc/login.defs`), so this one has a home even without `-m`.
+    `-m` says so explicitly and works the same on every Linux, which is why the lesson always includes it.
+  why: |
+    Whether `useradd` makes a home directory without being asked is a per-distribution
+    setting, `CREATE_HOME` in `/etc/login.defs`. Fedora and Rocky say yes; Debian and
+    some others say no, and an account without a home logs in to a shell that cannot save
+    anything. The `-m` flag (make home) removes the guesswork and is the habit the RHCSA
+    exam and every script expect. Nothing went wrong here; the Coach mentions it so the
+    command you remember is the portable one.
+    Ways forward:
+      1. `ls -ld /home/*`                       confirm the home directory was created
+      2. `sudo useradd -m -c "Full Name" name`  the portable form for next time
+      3. `grep CREATE_HOME /etc/login.defs`     see the setting on this system
   man: [useradd(8), login.defs(5)]
   cooldown: 86400
   priority: -6
@@ -48,7 +81,20 @@
     command: '^sudo\s+useradd\s+.*(?P<name>[a-z_][a-z0-9_-]*)\s*$'
     exit: [9]
   hint: >-
-    Exit 9 from `useradd` means `{name}` already exists. `getent passwd {name}` shows the current entry; `usermod` changes it.
+    Exit 9 from `useradd` means an account called `{name}` already exists, so nothing was created or changed.
+    `getent passwd {name}` shows the current entry; `usermod` changes it, `userdel -r` removes it.
+  why: |
+    Login names must be unique because the name is how `/etc/passwd` maps to a uid, and
+    `useradd` refuses to create a duplicate rather than quietly reusing or overwriting the
+    existing entry. Exit code 9 is its specific code for "username already in use". The
+    account may be left over from an earlier attempt, or it may be a system account that
+    a package created. Look at the entry first, then either change it in place with
+    `usermod` or remove it and start again.
+    Ways forward:
+      1. `getent passwd {name}`             the existing entry, seven colon-separated fields
+      2. `id {name}`                        its uid and groups
+      3. `sudo usermod ... {name}`          change the existing account instead
+      4. `sudo userdel -r {name}`           remove it, home directory included, and recreate
   man: [useradd(8), usermod(8), getent(1)]
   cooldown: 3600
   priority: 5
@@ -59,7 +105,21 @@
     command: '^passwd\s+(?P<name>[a-z_][a-z0-9_-]*)\s*$'
     not_sudo: true
   hint: >-
-    Only root can set another user's password. `passwd` alone changes yours; `sudo passwd {name}` changes theirs.
+    Only root can set another user's password, so `passwd {name}` was refused as yourself ("Only root can specify a user name").
+    `passwd` alone changes yours; `sudo passwd {name}` changes theirs.
+  why: |
+    Passwords are personal. `passwd` run as yourself may only change your own, and it asks
+    for the current one first so that someone at an unlocked screen cannot change it.
+    Changing another account's password is an administrator's action, done through
+    `sudo`, and it does not ask for the old password because administrators reset
+    passwords for people who have forgotten them. Every such reset is recorded in the
+    journal under your name, which is the accountability Pridwen's locked-root design is
+    built around.
+    Ways forward:
+      1. `passwd`                          change your own password
+      2. `sudo passwd {name}`              set another user's password, as root
+      3. `sudo passwd -l {name}`           lock the account instead, if that was the goal
+      4. `pridwen explain passwd`          the other flags
   man: [passwd(1)]
   cooldown: 3600
   priority: 10
@@ -70,15 +130,21 @@
     command: '^su\s*(-|-l|--login)?\s*$'
     exit: any
   hint: >-
-    Pridwen keeps the root account locked, so `su` has no password to accept. `sudo -i` opens a root shell using your own password and logs it.
+    Pridwen keeps the root account locked, so `su` has no password to accept and always answers "Authentication failure".
+    `sudo -i` opens a root shell using your own password and records it in the journal.
   why: |
-    A locked root account means there is no shared secret to guess, phish or reuse. Every
-    privileged action goes through sudo under a named user, and the journal records who
-    did what.
+    `su` switches to another account by asking for that account's password, which for
+    root would be a shared secret that everyone with admin rights knows. Pridwen locks the
+    root password instead, so there is nothing to guess, phish or reuse, and every
+    privileged action goes through `sudo` under a named person in the `wheel` group.
+    The journal then records who did what and when. That is the same setup you find on
+    well-run servers and in every compliance baseline, and it is why `su -` is a dead end
+    here by design rather than a fault.
     Ways forward:
-      1. `sudo -i`                  a login shell as root
-      2. `sudo command`             one command, which is usually enough
-      3. `sudo -l`                  see what you are allowed to do
+      1. `sudo -i`                  a login shell as root, `exit` to leave it
+      2. `sudo command`             one command as root, which is usually enough
+      3. `sudo -l`                  see what the policy lets you run
+      4. `pridwen learn user-03`    su versus sudo, and the locked-root design
   man: [su(1), sudo(8)]
   cooldown: 3600
   priority: 20
@@ -88,7 +154,19 @@
   when:
     command: '^su\s+(-\s+|-l\s+)?(?P<name>[a-z_][a-z0-9_-]*)\s*$'
   hint: >-
-    `su {name}` asks for that user's password. `sudo -u {name} -i` gets you the same shell with your own password, and is recorded.
+    `su {name}` asks for that user's password, which you may not know and should not need.
+    `sudo -u {name} -i` gets you the same shell with your own password, and is recorded in the journal.
+  why: |
+    `su` proves identity with the target account's password, so becoming another user
+    that way means knowing their secret. `sudo -u` (user) proves identity with your own
+    password, checks that the policy allows it, and then opens a shell or runs a command
+    as that account, writing a line in the journal that names you. That keeps each
+    person's password private and keeps a record of who acted as whom, which is the model
+    Pridwen and most servers use. `-i` gives a login shell with the target's environment.
+    Ways forward:
+      1. `sudo -u {name} -i`             a login shell as that user
+      2. `sudo -u {name} id`             one command as that user
+      3. `exit`                          return to your own shell afterwards
   man: [su(1), sudo(8)]
   cooldown: 3600
   priority: 10
@@ -99,8 +177,20 @@
     command: '^(sudo\s+)?usermod\s+(?!.*(?:\s-a[A-Za-z]*\b|--append)).*(?:\s-G\s|--groups)'
     exit: any
   hint: >-
-    `-G` without `-a` replaces every supplementary group, so the user may have just lost wheel.
-    `usermod -aG group user` appends; `id user` shows the result.
+    `-G` without `-a` replaces the user's entire supplementary group list with what you named, so they may have just lost wheel.
+    `usermod -aG group user` appends instead; `id user` shows the result.
+  why: |
+    `usermod -G` means "the supplementary groups are exactly this list". Any group not
+    named is removed, silently, including `wheel`, which is what allows `sudo` on Pridwen.
+    The `-a` flag (append) changes the meaning to "add these to whatever is already
+    there", which is almost always what you want. This is the single most common quiet
+    mistake in account administration, because nothing complains at the time; the person
+    only finds out at their next login, when `sudo` refuses them.
+    Ways forward:
+      1. `id user`                          see what the group list is now
+      2. `sudo usermod -aG wheel user`      put wheel back if it went missing
+      3. `sudo usermod -aG group user`      the append form for next time
+      4. `pridwen learn user-02`            creating accounts and groups
   man: [usermod(8), id(1)]
   cooldown: 3600
   priority: 30
@@ -111,7 +201,19 @@
     command: '^sudo\s+usermod\s+.*-aG?\s*wheel\b'
     exit: [0]
   hint: >-
-    Wheel membership applies to new logins, so the user needs to log out and back in before `sudo` accepts them. `id user` confirms it.
+    Wheel membership is written but applies to new logins only, so the user must log out and back in before `sudo` accepts them.
+    `id user` confirms the group is there.
+  why: |
+    A process carries the identity it was started with: the uid, the primary group and
+    the list of supplementary groups, all read from the account files at login. Changing
+    `/etc/group` afterwards does not reach into shells that are already running, so a
+    user added to `wheel` still gets "not in the sudoers file" until they start a new
+    session. `wheel` is the only group Pridwen's sudo policy accepts, which is why this
+    particular change is worth confirming rather than assuming.
+    Ways forward:
+      1. `id user`                        confirm wheel is in the list
+      2. Log out and back in              the new session picks up the group
+      3. `sudo -l`                        as that user, see what sudo now allows
   man: [usermod(8), sudoers(5)]
   cooldown: 86400
   priority: -5
@@ -122,7 +224,21 @@
     command: '^sudo\s+passwd(\s+root)?\s*$'
     exit: any
   hint: >-
-    Setting a root password unlocks direct root login, which Pridwen leaves off on purpose. `sudo -i` covers the same need; `sudo passwd -l root` locks it again.
+    Setting a root password unlocks direct root login, which Pridwen leaves off on purpose so every privileged action is tied to a named person.
+    `sudo -i` covers the same need; `sudo passwd -l root` locks it again.
+  why: |
+    A root password is a shared secret: anyone who learns it can log in as root with no
+    record of who they were. Pridwen locks the root account so that the only path to root
+    is `sudo` from a named member of `wheel`, which the journal records. `sudo passwd`
+    with no user name acts on root, because sudo runs the command as root, and giving root
+    a password reopens the direct road that the design closed. If a root password was
+    set, locking it again restores the baseline; the Posture panel in the Academy checks
+    for exactly this.
+    Ways forward:
+      1. `sudo passwd -l root`           lock root again
+      2. `sudo -i`                       a root shell when you need one, `exit` to leave
+      3. `sudo passwd -S root`           show whether root is locked (`L`) or has a password (`P`)
+      4. `pridwen learn user-03`         why root stays locked
   man: [passwd(1), sudo(8)]
   cooldown: 3600
   priority: 25
@@ -133,7 +249,20 @@
     command: '^(sudo\s+)?passwd\s+(-d|--delete)\b'
     exit: any
   hint: >-
-    `passwd -d` removes the password entirely, so that account logs in with nothing. `passwd -l` locks it instead.
+    `passwd -d` removes the password entirely, so that account logs in with no password at all, which is worse than a weak one.
+    `passwd -l` locks it instead, keeping the account but refusing every login.
+  why: |
+    `-d` (delete) empties the password field in `/etc/shadow`. Depending on the login
+    path, an empty field can mean "no password needed", so anyone at the keyboard or on a
+    service that allows it can become that user. That is never what "disable this account"
+    means. `-l` (lock) puts a `!` in front of the hash so that nothing can match it, the
+    account keeps its files and groups, and `-u` (unlock) reverses it later. Locking is
+    also how Pridwen keeps root closed.
+    Ways forward:
+      1. `sudo passwd -l name`           lock the account
+      2. `sudo passwd -u name`           unlock it again later
+      3. `sudo passwd -S name`           show the password status: L locked, P set, NP none
+      4. `sudo passwd name`              set a real password if one was deleted
   man: [passwd(1)]
   cooldown: 3600
   priority: 30
@@ -144,7 +273,20 @@
     command: '^sudo\s+userdel\s+(?!-r)(?P<name>[a-z_][a-z0-9_-]*)\s*$'
     exit: [0]
   hint: >-
-    The account is gone but `/home/{name}` is still on disk, owned by a uid that no longer has a name. `userdel -r` removes both; `sudo ls -ln /home` shows orphaned owners as numbers.
+    The account is gone but its home directory is still on disk, owned by a uid that no longer has a name.
+    `userdel -r` removes both; `sudo ls -ln /home` shows orphaned owners as bare numbers.
+  why: |
+    `userdel` on its own removes the lines for `{name}` from `/etc/passwd`, `/etc/shadow`
+    and `/etc/group` and stops there. The files the account owned are untouched, still
+    stamped with its uid, and because nothing maps that number to a name any more, `ls -l`
+    shows the number itself. That is an orphaned directory. It wastes space, and if a new
+    account is later given the same uid it silently inherits every one of those files.
+    `-r` (remove) deletes the home directory and mail spool along with the account.
+    Ways forward:
+      1. `sudo ls -ln /home`               find directories owned by a bare number
+      2. `sudo rm -r /home/<dir>`          remove the orphaned home once you are sure
+      3. `sudo find / -nouser 2>/dev/null` every file on the system with no owning account
+      4. `sudo userdel -r name`            the complete form for next time
   man: [userdel(8)]
   cooldown: 86400
   priority: -5
@@ -155,7 +297,19 @@
     command: '^sudo\s+userdel\b'
     exit: [8]
   hint: >-
-    Exit 8 means the user is still logged in. `loginctl list-sessions` shows them; `sudo loginctl terminate-user name` ends the session first.
+    Exit 8 from `userdel` means the user is still logged in, so the account was left in place.
+    `loginctl list-sessions` shows the session; `sudo loginctl terminate-user name` ends it, then run `userdel` again.
+  why: |
+    Removing an account while its processes are still running would leave a shell and
+    open files belonging to a uid that no longer exists, so `userdel` refuses with exit
+    code 8 until the user has logged out. systemd-logind tracks every login session on
+    the machine, and `loginctl` is its front door: it lists the sessions and can end all
+    of a user's sessions at once. Ending someone's session closes their programs without
+    saving, so on a shared system it is polite to ask first.
+    Ways forward:
+      1. `loginctl list-sessions`               who is logged in and from where
+      2. `sudo loginctl terminate-user name`    end that user's sessions
+      3. `sudo userdel -r name`                 then remove the account and its home
   man: [userdel(8), loginctl(1)]
   cooldown: 3600
   priority: 5

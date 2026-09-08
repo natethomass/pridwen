@@ -6,48 +6,109 @@ required: true
 minutes: 15
 target: host
 brief: |
-  The next time Pridwen updates, the machine will reboot into a new image and
-  keep the old one behind it, ready to roll back to if the new one misbehaves.
+  The next time Pridwen updates, the machine will reboot into a new image
+  and keep the old one behind it, ready to roll back to if the new one
+  misbehaves. A deployment is one bootable image on disk, and bootc is the
+  tool that fetches images and manages deployments; the booted one is the
+  system you are using now, and a rollback is the previous one, kept whole.
   That safety net only helps if you know how to read it before you need it,
-  and the reading is all unprivileged.
+  and nearly all of the reading is unprivileged.
 
-  Save the kernel arguments this deployment boots with and find the one that
-  names the root device; those arguments are how the kernel learns where the
-  system lives, and `rpm-ostree kargs` is how you would change them. Save the
-  bootc view of the host and read which image is booted and whether a rollback
-  deployment exists yet. Then look at the boot itself: how long each phase
-  took, which boots the journal still remembers, and whether anything failed
-  on the way to the desktop this time. A quiet error list is the baseline you
-  will compare against after the first update.
+  Save the kernel arguments this deployment boots with and find the one
+  that names the root device. Kernel arguments are the short settings the
+  bootloader hands to the kernel at start-up, and `root=` is how the kernel
+  learns where the system lives; `rpm-ostree kargs` prints them and is also
+  how you would change them for the next boot. Save the bootc view of the
+  host and read which image is booted and whether a rollback deployment
+  exists yet. Then look at the boot itself with `systemd-analyze`, which
+  reports how long the firmware, the bootloader, the kernel and userspace
+  each took, and with `journalctl`, which can list every boot it remembers
+  (each with its own id) and filter this boot down to errors. Reading the
+  system journal needs membership of the `wheel` group, which you have. A
+  quiet error list is the baseline you will compare against after the first
+  update.
+
+  On a job, the first question after a bad update is "what changed and can
+  we go back"; on Pridwen the answer is in `bootc status` and it takes one
+  command. Done looks like four answer files. The checker reads them for a
+  `root=` argument, the word `pridwen` in the booted image name, the
+  `Startup finished` line of `systemd-analyze`, and a 32-character boot id.
 steps:
-  - Save the kernel arguments this deployment boots with in `~/pridwen/answers/kargs.txt` and find the one naming the root device.
-  - Save the bootc view of the host in `~/pridwen/answers/bootc-status.txt` and read which image is booted and whether a rollback exists.
-  - Save the boot time breakdown in `~/pridwen/answers/boot-time.txt` and name the slowest phase.
-  - Save the list of boots the journal remembers in `~/pridwen/answers/boots.txt`, then read this boot's errors, if any.
+  - >-
+    Print the kernel arguments with `rpm-ostree kargs` (or read
+    `/proc/cmdline`) and save them in `~/pridwen/answers/kargs.txt`, then
+    find the `root=` one. Expect one long line of `key=value` settings.
+  - >-
+    Print the bootc view of the host with `bootc status` and save it in
+    `~/pridwen/answers/bootc-status.txt`, then read which image is booted
+    and whether a rollback exists. Expect a `Booted image:` line naming
+    `ghcr.io/natethomass/pridwen` and, before any update, no rollback.
+  - >-
+    Print the boot time breakdown with `systemd-analyze` and save it in
+    `~/pridwen/answers/boot-time.txt`, then name the slowest phase. Expect
+    one `Startup finished in ...` line with a figure per phase.
+  - >-
+    List the boots the journal remembers with `journalctl --list-boots` and
+    save them in `~/pridwen/answers/boots.txt`, then read this boot at
+    priority error. Expect one line per boot with a long hex id, and a
+    short or empty error list.
 hints:
-  - "`rpm-ostree kargs` prints the arguments; `cat /proc/cmdline` is the kernel's own copy of them."
-  - "`bootc status` reads the deployments; if it insists on root, this is one of the rare reads where `sudo` is fair."
-  - "`systemd-analyze` for the phases, `journalctl --list-boots` for the boots, `journalctl -b -p err` for this boot's errors. Members of wheel may read the system journal."
+  - >-
+    `rpm-ostree kargs` prints the arguments; `cat /proc/cmdline` is the
+    kernel's own copy of them and needs no permission at all. `bootc status`
+    reads the deployments; if it insists on root, this is one of the rare
+    reads where `sudo` is fair. `systemd-analyze` with no arguments prints
+    the phases, `journalctl --list-boots` the boots, and
+    `journalctl -b -p err` this boot (`-b`) at priority (`-p`) error and
+    above.
+  - >-
+    `>` sends output to a file, and with `sudo` in front the file is still
+    written by your shell as you, so `sudo bootc status > file` works and
+    leaves the file yours. `--list-boots` lines look like
+    `-1 a1b2c3... Mon 2026-09-07 ...`: the first column counts back from
+    this boot (0), the second is the boot id, then the first and last entry
+    times.
+  - >-
+    `rpm-ostree kargs > ~/pridwen/answers/kargs.txt`, then
+    `sudo bootc status > ~/pridwen/answers/bootc-status.txt`, then
+    `systemd-analyze > ~/pridwen/answers/boot-time.txt`, then
+    `journalctl --list-boots > ~/pridwen/answers/boots.txt`, then
+    `journalctl -b -p err` to read this boot's errors.
 checks:
   - id: kargs
     type: path_contains
     path: "{home}/pridwen/answers/kargs.txt"
     regex: 'root='
-    fail: "`kargs.txt` should hold the kernel arguments, which include `root=`."
+    fail: >-
+      `kargs.txt` is {actual} and contains no `root=` argument.
+      `rpm-ostree kargs > ~/pridwen/answers/kargs.txt` saves the list;
+      `cat /proc/cmdline > ~/pridwen/answers/kargs.txt` does the same from
+      the kernel's own copy.
   - id: bootc-status
     type: path_contains
     path: "{home}/pridwen/answers/bootc-status.txt"
     regex: 'pridwen'
-    fail: "`bootc-status.txt` should show the booted image, `ghcr.io/natethomass/pridwen`."
+    fail: >-
+      `bootc-status.txt` is {actual} and does not mention `pridwen`, the
+      booted image `ghcr.io/natethomass/pridwen`.
+      `sudo bootc status > ~/pridwen/answers/bootc-status.txt` saves it; the
+      file is written by your shell, so it stays yours.
   - id: boot-time
     type: path_contains
     path: "{home}/pridwen/answers/boot-time.txt"
     regex: 'Startup finished'
-    fail: "`boot-time.txt` should be `systemd-analyze` output, which begins with `Startup finished`."
+    fail: >-
+      `boot-time.txt` is {actual} and does not hold the `Startup finished`
+      line that `systemd-analyze` prints.
+      `systemd-analyze > ~/pridwen/answers/boot-time.txt` saves it.
   - id: boots
     type: path_contains
     path: "{home}/pridwen/answers/boots.txt"
     regex: '[0-9a-f]{32}'
-    fail: "`boots.txt` should be the `--list-boots` table; each boot has a 32-character id."
+    fail: >-
+      `boots.txt` is {actual} and holds no 32-character boot id, so it is not
+      the `--list-boots` table.
+      `journalctl --list-boots > ~/pridwen/answers/boots.txt` saves it; a
+      permissions complaint means you are not in `wheel`.
 cleanup: |
   rm -f ~/pridwen/answers/kargs.txt ~/pridwen/answers/bootc-status.txt ~/pridwen/answers/boot-time.txt ~/pridwen/answers/boots.txt

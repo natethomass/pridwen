@@ -9,15 +9,20 @@
     exit: any
     probe: ostree
   hint: >-
-    On a bootc system the boot entries are generated from the deployment, so `{cmd}` is not the tool. Kernel arguments change with `rpm-ostree kargs`; the bootloader itself is updated with `bootc`.
+    On a bootc system the boot entries are generated from the deployment, so `{cmd}` is not the tool and its result is overwritten at the next update. Kernel arguments change with `rpm-ostree kargs`; the bootloader itself is updated by `bootc`.
   why: |
-    Each deployment gets its own Boot Loader Specification entry under `/boot/loader/entries`,
-    written when the image is staged. Editing GRUB by hand is overwritten at the next
-    update; kargs are stored with the deployment and survive it.
+    `{cmd}` is the traditional way to regenerate GRUB's menu from `/etc/default/grub`, but
+    Pridwen does not boot that way. Each deployment, one complete copy of the operating
+    system unpacked from the image, gets its own Boot Loader Specification entry under
+    `/boot/loader/entries`, written by bootc when the deployment is staged. The next
+    `bootc upgrade` writes fresh entries, so anything `{cmd}` produced is silently replaced.
+    Kernel arguments are stored with the deployment instead, which means a bad argument
+    rolls back with everything else by booting the previous entry.
     Ways forward:
-      1. `rpm-ostree kargs`                              show the current arguments
-      2. `sudo rpm-ostree kargs --append=quiet`          add one, effective next boot
-      3. `sudo rpm-ostree kargs --delete=quiet`          remove one
+      1. `rpm-ostree kargs`                              show the current kernel arguments
+      2. `sudo rpm-ostree kargs --append=quiet`          add one; a new deployment, effective next boot
+      3. `sudo rpm-ostree kargs --delete=quiet`          remove one the same way
+      4. `pridwen explain rpm-ostree`                    the `kargs` subcommand and its actions
   man: [rpm-ostree(1), bootc(8)]
   cooldown: 86400
   priority: 30
@@ -28,7 +33,20 @@
     command: '^sudo\s+rpm-ostree\s+kargs\s+.*--(append|delete|replace)'
     exit: [0]
   hint: >-
-    The new kernel arguments belong to a fresh deployment and apply at the next boot. `rpm-ostree kargs` shows them; `cat /proc/cmdline` shows what this boot actually used.
+    The new kernel arguments belong to a fresh deployment and apply at the next boot, with the current one kept as rollback. `rpm-ostree kargs` shows them; `cat /proc/cmdline` shows what this boot actually used.
+  why: |
+    `rpm-ostree` did not edit the running system. It staged a new deployment, a second
+    complete copy of the operating system that shares every unchanged file with the current
+    one, and gave it the changed kernel argument set. The deployment you are in keeps its
+    old arguments and becomes the rollback entry. Pridwen works this way so that a kernel
+    argument that stops the machine booting is undone by choosing the previous entry in the
+    boot menu, not by rescuing GRUB from a live USB. Until you reboot, `/proc/cmdline` still
+    shows the old set.
+    Ways forward:
+      1. `rpm-ostree kargs`                     the argument set of the pending deployment
+      2. `cat /proc/cmdline`                    what the kernel you are running actually received
+      3. `rpm-ostree status`                    the pending deployment listed first, without the `*`
+      4. `sudo rpm-ostree cleanup -p`           discard the pending deployment if you change your mind
   man: [rpm-ostree(1)]
   cooldown: 86400
   priority: -5
@@ -40,7 +58,20 @@
     exit: any
     probe: ostree
   hint: >-
-    Pridwen's initramfs is built into the image, so a `dracut` run on the host is replaced by the next update. Changes go into the Containerfile, where the build already runs dracut.
+    Pridwen's initramfs is built into the image at build time, so a `dracut` run on the host is replaced by the next update. Changes go into the Containerfile, where the build already runs dracut.
+  why: |
+    `dracut` builds the initramfs, the small starter filesystem the boot loader loads with
+    the kernel to unlock LUKS, show Plymouth, and mount the real root. On a traditional
+    system it runs on the machine after every kernel update. On Pridwen it runs once, in
+    CI, when the image is built, and the finished initramfs ships inside the image under
+    `/usr/lib/modules`. That is why every machine on a given version boots identically and
+    why a local `dracut` run is lost at the next `bootc upgrade`. A change to what the
+    initramfs contains belongs in the Containerfile, where the build runs dracut.
+    Ways forward:
+      1. `lsinitrd /usr/lib/modules/$(uname -r)/initramfs.img | head`   see what the shipped initramfs contains
+      2. `rpm-ostree status`                                              which deployment, and so which initramfs, is booted
+      3. `journalctl -b -p err`                                           if you were chasing a boot problem, look here first
+      4. `pridwen explain journalctl`                                     the `-b` and `-p` flags
   man: [dracut(8), bootc(8)]
   cooldown: 86400
   priority: 20
@@ -51,7 +82,20 @@
     command: '^(sudo\s+)?plymouth-set-default-theme\b'
     exit: any
   hint: >-
-    The Plymouth theme lives inside the initramfs, which is part of the image. Setting it here does not survive an update; the `pridwen` theme is set at build time.
+    The Plymouth theme lives inside the initramfs, which is part of the image, so setting it here does not survive an update. The `pridwen` theme with the shield and narration is set at build time.
+  why: |
+    Plymouth is the program that draws the boot screen, and its theme is copied into the
+    initramfs so it can show before the real root filesystem exists. Pridwen's `pridwen`
+    theme, the shield, the rail and the plain-English narration lines, is chosen in the
+    Containerfile and baked into the image's initramfs. `plymouth-set-default-theme` edits
+    a config file under `/etc` and, with `-R`, rebuilds the initramfs locally; the next
+    `bootc upgrade` brings the image's initramfs back, so the change vanishes. Theme changes
+    belong in the image build.
+    Ways forward:
+      1. `plymouth-set-default-theme`               with no arguments, shows the active theme (`pridwen`)
+      2. `ls /usr/share/plymouth/themes/`           the themes shipped in the image
+      3. `journalctl -b -u plymouth-start.service`  what Plymouth did during this boot
+      4. `pridwen learn boot-01`                    the boot sequence, Esc for raw messages, and where the initramfs comes from
   man: [plymouth(8)]
   cooldown: 86400
   priority: 20
@@ -62,7 +106,20 @@
     command: '^(reboot|shutdown|poweroff|halt)\b'
     not_sudo: true
   hint: >-
-    From a remote or non-graphical session polkit will not let you reboot without root: `sudo systemctl reboot`. In your own desktop session `systemctl reboot` works as is.
+    From a remote or text-only session polkit will not let you reboot without root: `sudo systemctl reboot`. In your own desktop session `systemctl reboot` works as is.
+  why: |
+    `reboot`, `shutdown`, `poweroff` and `halt` are all shortcuts to `systemctl`, which asks
+    logind to power the machine down and logind asks polkit, the permission service, whether
+    you may. polkit trusts a person sitting at the desktop, so from your own graphical
+    session it just works. From SSH or a text console it answers `Interactive
+    authentication required`, because a remote user rebooting a machine that other people
+    may be using is exactly the kind of action that should need root. Pridwen keeps that
+    default; `sudo` makes the intent explicit and writes a journal line.
+    Ways forward:
+      1. `sudo systemctl reboot`        reboot now, with the request logged under your name
+      2. `sudo systemctl poweroff`      shut down instead
+      3. `loginctl`                     who else is logged in before you take the machine down
+      4. `pridwen explain systemctl`    the power verbs
   man: [systemctl(1), polkit(8)]
   cooldown: 3600
 - id: boot-etc-default-grub
@@ -73,7 +130,20 @@
     exit: any
     probe: ostree
   hint: >-
-    Editing `{path}` changes nothing on a bootc system because no tool regenerates GRUB from it here. `sudo rpm-ostree kargs --append=...` is how kernel arguments are set.
+    Editing `{path}` changes nothing on a bootc system, because no tool regenerates GRUB from it here. `sudo rpm-ostree kargs --append=...` is how kernel arguments are set, and they take effect at the next boot.
+  why: |
+    On a traditional Fedora, `{path}` holds the kernel arguments and `grub2-mkconfig` turns
+    it into the boot menu. Pridwen never runs that step. Its boot entries are Boot Loader
+    Specification files under `/boot/loader/entries`, one per deployment, written by bootc
+    when a deployment is staged, and the kernel arguments come from the deployment itself.
+    So an edit to `{path}` sits there doing nothing, which is worse than an error because it
+    looks like it worked. Keeping arguments with the deployment is what lets a bad one roll
+    back with everything else.
+    Ways forward:
+      1. `rpm-ostree kargs`                                   the arguments the next boot will use
+      2. `sudo rpm-ostree kargs --append=KEY=VALUE`           add an argument in a new deployment
+      3. `cat /boot/loader/entries/*.conf`                    the generated entries; the `options` line is the karg set
+      4. `pridwen explain rpm-ostree`                         the `kargs` actions
   man: [rpm-ostree(1)]
   cooldown: 86400
   priority: 20
@@ -84,7 +154,20 @@
     command: '^efibootmgr\b'
     not_sudo: true
   hint: >-
-    Firmware boot entries live in NVRAM, which only root may read or change: `sudo efibootmgr -v`.
+    Firmware boot entries live in NVRAM, the motherboard's own memory, which only root may read or change; `sudo efibootmgr -v` lists them with their paths.
+  why: |
+    `efibootmgr` reads and edits the boot entries the firmware keeps in NVRAM, a small
+    non-volatile memory on the motherboard, through a kernel interface under
+    `/sys/firmware/efi/efivars` that only root may open. It refused because writing the
+    wrong thing there can leave a machine unable to find its boot loader at all, before
+    Linux is even involved. Reading is harmless, but the kernel does not separate the two,
+    so even a listing needs `sudo`. On Pridwen the entry that matters points at the EFI
+    partition (`/boot/efi`) where GRUB lives.
+    Ways forward:
+      1. `sudo efibootmgr -v`           list firmware boot entries, verbose, with the boot order
+      2. `lsblk -f`                     find the `vfat` EFI partition mounted at `/boot/efi`
+      3. `systemd-analyze`              how long the firmware and loader stages took
+      4. `pridwen explain efibootmgr`   the `-v` flag and the change options
   man: [efibootmgr(8)]
   cooldown: 3600
 
@@ -95,7 +178,20 @@
     command: '^(sudo\s+)?systemctl\s+set-default\s+(?P<target>\S+)'
     exit: any
   hint: >-
-    `systemctl set-default` changes what the machine boots into; `graphical.target` is the desktop and `multi-user.target` is text only. `systemctl get-default` shows the current one.
+    `systemctl set-default` changes what the machine boots into: `graphical.target` is the desktop and `multi-user.target` is text only. `systemctl get-default` shows the current one, and the change applies at the next boot.
+  why: |
+    A target is a systemd unit that groups other units into a goal state, and the default
+    target is the one systemd aims for at boot. `graphical.target` includes the login
+    screen and the desktop; `multi-user.target` stops at text consoles and services, which
+    is how servers run. `set-default` changes a symlink under `/etc/systemd/system`, so it
+    takes effect at the next boot and, because `/etc` is merged across upgrades, it
+    persists. Setting {target} on a desktop means the next boot may land on a black text
+    login, which is a surprise if you did not mean it.
+    Ways forward:
+      1. `systemctl get-default`                        what the next boot aims for now
+      2. `sudo systemctl set-default graphical.target`  back to the desktop
+      3. `sudo systemctl isolate {target}`              switch to it now, without rebooting
+      4. `pridwen explain systemctl`                    the target verbs
   man: [systemd.special(7), systemctl(1)]
   cooldown: 86400
   priority: 5
@@ -108,7 +204,20 @@
     exit: any
     probe: ostree
   hint: >-
-    Boot loader entries under `/boot/loader/entries` are generated per deployment, so hand edits are overwritten at the next update. Change kernel arguments with `sudo rpm-ostree kargs` instead.
+    Boot loader entries under `/boot/loader/entries` are generated per deployment, so hand edits are overwritten at the next update. Change kernel arguments with `sudo rpm-ostree kargs` instead, which keeps them with the deployment.
+  why: |
+    The file at {path} is a Boot Loader Specification entry: a few lines naming the kernel,
+    the initramfs, and the kernel arguments for one deployment. bootc writes one for each
+    deployment when it stages it and rewrites them all whenever the set of deployments
+    changes, which happens at every `bootc upgrade`, `rollback` or `kargs` change. A hand
+    edit works until then and disappears silently. Pridwen keeps the arguments as a property
+    of the deployment so that they roll back together with the image; editing the entry
+    directly breaks that link.
+    Ways forward:
+      1. `rpm-ostree kargs`                                   the arguments as the deployment records them
+      2. `sudo rpm-ostree kargs --append=KEY=VALUE`           change them the supported way
+      3. `cat {path}`                                         read the entry; the `options` line is the karg set
+      4. `pridwen explain rpm-ostree`                         the `kargs` actions
   man: [rpm-ostree(1), bootc(8)]
   cooldown: 86400
   priority: 15
