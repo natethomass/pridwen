@@ -48,6 +48,43 @@ https://claude.ai/code/artifact/fde7ace6-f138-4e68-82a7-7d6aa6f2823c
 - Prefer small, verifiable steps: push, watch CI, boot the artifact, report exactly what
   happened. Don't claim a build works until CI is green and the VM booted.
 
+## Model policy (cost discipline)
+
+Set 2026-09-07 by the owner. The heavy tier (Fable 5.1, Opus 5) is for heavy lifting only.
+Everything else runs on a lesser model. Before starting a task, name the tier and either
+switch the session (`/model`) or delegate to a subagent with `model:` set. Do not default to
+whatever the session happens to be on.
+
+| Tier | Model | What it is for |
+|---|---|---|
+| Heavy | Fable 5.1 / Opus 5 | Design before code exists; unknown-cause bugs that cross subsystems; anything that can brick a boot or weaken hardening |
+| Working | Sonnet 5 | Implementing a slice against a design that already exists; refactors; tests; diff review |
+| Bulk | Haiku 4.5 | Content from a schema; mechanical edits; status checks; reading logs |
+
+**Heavy tier, in this repo:** designing a subsystem before it exists (the M4 scenario runner,
+the M5 Guide provider layer, the M6 posture-as-data model, any new `docs/*.md` schema);
+debugging where the cause is unknown and crosses boundaries (initramfs, Plymouth, GDM/PAM/
+libgdm, SELinux denials, bootc/ostree, Anaconda, red CI on the image build); any change to
+the boot path, LUKS, SELinux, firewalld, sudo or the Flatpak remotes; security review of the
+posture baseline.
+
+**Working tier:** implementing a slice the design already covers, new `pridwen` subcommands,
+Academy panels that follow the existing GTK pattern, Range checkers, rules-engine work,
+`build_files` edits with a known shape, reviewing a diff.
+
+**Bulk tier:** lesson markdown, mission YAML, rules YAML, scenario YAML, explain YAML written
+against a schema; bulk renames and sample-username sweeps; version bumps; `git`/`gh` status;
+reading CI logs and listing artifacts. Never spend the heavy tier on content generation.
+
+**Escalate** when two attempts at the same bug have failed, or when the task touches the boot
+path or the hardening baseline. **De-escalate** as soon as a design doc exists: the design was
+heavy, the implementation is not.
+
+Delegation is the cheap lever. The session can sit on the working tier and spawn a heavy
+subagent for one hard question, or sit heavy and hand every mechanical sweep to Haiku
+subagents. `/code-review ultra` and the Workflow tool are separately billed and owner
+triggered; never launch them unasked.
+
 ## Milestones
 
 | | Delivers | Done when |
@@ -210,7 +247,20 @@ structure). Slices:
    `Store` from a thread in Academy. Driven from the host on the same image: `pridwen mission
    check core-01-terminal` verified (4/4), node Terminal -> verified, Files unlocked, journal
    shows mission results and Coach firings. Remaining: Check from the app (fix in cf286d5),
-   posture panel, and the owner working the Core track end to end.
+   posture panel, and the owner working the Core track end to end. Posture panel turned out
+   to already exist from slice 1 (`page_posture` in `academy/app.py`); the only real
+   remaining items were the app-side check fix and the owner's end-to-end pass.
+4. **Over-explain rewrite + welcome flow**: owner's rule (`docs/coach.md` "Over-explain,
+   always") applied to all 87 lessons, all 20 Core missions, and the ~200 Coach rules: every
+   command shown with its output, every flag and term defined on first use, a "Words you'll
+   meet" glossary per lesson, quoted-and-translated errors, a three-bullet "Remember". First
+   desktop now hands off into the Academy: `pridwen-welcome` (new, autostarted via
+   `/etc/xdg/autostart/pridwen-welcome.desktop`) fires once per user, six seconds after login,
+   gated on `/org/pridwen/learner/welcomed`; it either opens the Academy with a new welcome
+   dialog naming the first unverified mission or posts a Dispatch notification, per the
+   wizard's new Academy page (`/org/pridwen/learner/open-academy`, default on). The Tree page
+   also gained an `Adw.Banner` naming the next mission. Defaults ship in
+   `etc/dconf/db/distro.d/30-pridwen-learner`. Version 0.3.1-m3. Not yet verified in a VM.
 
 ## The mark
 
