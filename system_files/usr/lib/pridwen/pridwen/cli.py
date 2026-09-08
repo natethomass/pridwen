@@ -23,7 +23,7 @@ USAGE = """pridwen: the Coach's pull side.
   pridwen track [id]           track progress
   pridwen journal [note ...]   the journal, or add a note
   pridwen posture              the hardening baseline, pass/drift
-  pridwen range list [track] | show|start|enter|check|reset|stop <id>
+  pridwen range list [track] | show|start|enter|check|reset|stop <id> | images [pull <key>]
   pridwen version
 
 Docs: /usr/share/doc/pridwen/coach.md
@@ -414,8 +414,32 @@ def cmd_range(args, lib, store):
         for r in rows:
             out(f"  {r['scenario']:<28} {r['target']:<14} {r['state']}")
         return 0
+    if sub == "images":
+        from .range import images as images_mod
+        pics = images_mod.load()
+        # ["images"] or ["images", "list"] lists; ["images", "pull", "<key>"] pulls —
+        # matching the message runner.start() already prints when an image is missing
+        # ("Run pridwen range images pull <key> first").
+        verb = args[1] if len(args) > 1 else "list"
+        if verb != "pull":
+            for key, img in sorted(pics.items()):
+                mark = "present" if images_mod.present(key, pics) else "not pulled"
+                out(f"  {key:<16} {img.kind:<10} ~{img.size_mb} MiB  {mark}")
+                out(text.para(f"    {img.about}"))
+            return 0
+        if len(args) < 3 or args[2] not in pics:
+            out(text.hint("usage: pridwen range images pull <key> (`pridwen range images` lists the keys)", None))
+            return 2
+        key = args[2]
+        out(text.para(f"Pulling {pics[key].pinned} (~{pics[key].size_mb} MiB)…"))
+        ok, msg = images_mod.pull(key, pics)
+        if ok:
+            out(text.hint(f"{key} is pulled. `pridwen range start <id>` can use it now.", None))
+            return 0
+        out(text.hint(f"Pull failed: {msg.strip().splitlines()[-1] if msg.strip() else 'no output'}", None))
+        return 1
     if len(args) < 2 or args[1] not in cat.missions:
-        out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status")
+        out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status | images [pull <key>]")
         return 2
     mid = args[1]
     m = cat.missions[mid]
@@ -485,7 +509,7 @@ def cmd_range(args, lib, store):
             return 1
         out(text.hint(f"{sid} stopped; the seeded image is kept.", None))
         return 0
-    out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status")
+    out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status | images [pull <key>]")
     return 2
 
 
