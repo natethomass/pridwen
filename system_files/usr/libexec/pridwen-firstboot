@@ -63,6 +63,7 @@ window.pridwen {
 .pridwen-title { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; color: #ECE6DA; }
 .pridwen-lede  { font-size: 15px; color: #B5AD9F; }
 .pridwen-muted { color: #7E776C; font-size: 13px; }
+.pridwen-strong { font-weight: 600; }
 .pridwen-warn  { color: #E8985C; font-size: 13px; }
 .pridwen-primary {
   background-color: #F2EDE3; color: #24211D; border-radius: 99px;
@@ -386,6 +387,54 @@ class KeyboardPage(Page):
         gsettings_set("org.gnome.desktop.input-sources", "sources", f"[('xkb', '{layout_id}')]")
 
 
+class AcademyPage(Page):
+    """Where the learning lives. Nothing is locked; this page just makes sure the door is obvious."""
+
+    KEY = "/org/pridwen/learner/open-academy"
+
+    def __init__(self, wizard):
+        super().__init__(wizard, "Where the learning lives",
+                         "Pridwen is a full desktop first. The teaching sits beside it, and it starts in the Academy.")
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        for icon, head, body in (
+            ("pridwen-symbolic", "Academy, in your dock",
+             "The skill tree. Every lesson, mission, and lab is in there, and a mission is only verified when a checker sees the result on this machine. The first mission takes ten minutes."),
+            ("utilities-terminal-symbolic", "Coach, in the terminal",
+             "When a command fails, one plain-English line says what happened and where to read more. `pridwen why` explains the last failure in full."),
+            ("user-available-symbolic", "Guide, when you connect it",
+             "An assistant that explains what is on your screen. It never runs anything. Connect a key or a local model later, from the Academy."),
+        ):
+            row = Gtk.Box(spacing=12)
+            img = Gtk.Image.new_from_icon_name(icon)
+            img.set_pixel_size(22)
+            img.set_valign(Gtk.Align.START)
+            img.set_margin_top(2)
+            row.append(img)
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            h = Gtk.Label(label=head, xalign=0, wrap=True)
+            h.add_css_class("pridwen-strong")
+            b = Gtk.Label(label=body, xalign=0, wrap=True)
+            b.add_css_class("pridwen-muted")
+            col.append(h)
+            col.append(b)
+            row.append(col)
+            rows.append(row)
+        self.body.append(rows)
+        sw_row = Gtk.Box(spacing=12, margin_top=8)
+        lab = Gtk.Label(label="Open the Academy when my desktop appears", xalign=0, wrap=True, hexpand=True)
+        self.switch = Gtk.Switch(active=True, valign=Gtk.Align.CENTER)
+        sw_row.append(lab)
+        sw_row.append(self.switch)
+        self.body.append(sw_row)
+        note = Gtk.Label(xalign=0, wrap=True, label="Either way it stays in the dock, and the Coach points at it whenever a lesson would help.")
+        note.add_css_class("pridwen-muted")
+        self.body.append(note)
+
+    @property
+    def value(self):
+        return self.switch.get_active()
+
+
 class GuidePage(Page):
     def __init__(self, wizard):
         super().__init__(wizard, "The Guide", "An assistant that explains what you're looking at and never runs anything for you.")
@@ -462,8 +511,9 @@ class Wizard(Adw.Application):
         self.language = LanguagePage(self) if GnomeDesktop else None
         self.keyboard = KeyboardPage(self) if GnomeDesktop else None
         self.timezone = TimezonePage(self) if all_timezones() else None
+        self.academy = AcademyPage(self)
         self.pages = [p for p in [WelcomePage(self), self.language, self.keyboard, self.timezone, self.account, self.track,
-                                  self.look, GuidePage(self), PrivacyPage(self)] if p is not None]
+                                  self.academy, self.look, GuidePage(self), PrivacyPage(self)] if p is not None]
         for i, p in enumerate(self.pages):
             self.stack.add_named(p, f"p{i}")
         overlay = Gtk.Overlay(child=self.stack)
@@ -611,6 +661,7 @@ class Wizard(Adw.Application):
         # Choices, into this session's dconf: the copy worker carries them over.
         dconf_write(self.track.key, f"'{self.track.value}'")
         dconf_write(self.look.key, f"'{self.look.value}'")
+        dconf_write(AcademyPage.KEY, "true" if self.academy.value else "false")
         scheme = {"day": "default", "night": "prefer-dark"}.get(self.look.value, "default")
         gsettings_set("org.gnome.desktop.interface", "color-scheme", scheme)
 

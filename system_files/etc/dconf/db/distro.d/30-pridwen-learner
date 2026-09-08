@@ -1,0 +1,8 @@
+# Pridwen learner defaults. The welcome wizard overrides open-academy from its
+# Academy page; pridwen-welcome flips welcomed to true after the first desktop.
+# Nothing here locks anything: the Academy stays an ordinary app in the dock.
+
+[org/pridwen/learner]
+track='beginner'
+open-academy=true
+welcomed=false

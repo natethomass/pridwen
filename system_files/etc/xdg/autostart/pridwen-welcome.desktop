@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pridwen welcome
+Comment=Opens the Academy the first time a desktop appears
+Exec=/usr/libexec/pridwen-welcome
+Icon=pridwen
+NoDisplay=true
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-Phase=Applications
+X-GNOME-Autostart-Notify=false

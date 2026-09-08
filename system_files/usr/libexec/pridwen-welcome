@@ -1,0 +1,95 @@
+#!/usr/bin/python3
+"""First-desktop hand-off into the Academy.
+
+Started by /etc/xdg/autostart/pridwen-welcome.desktop on every GNOME login and
+exits at once unless /org/pridwen/learner/welcomed is still false. Then, once:
+
+  open-academy true   -> open the Academy with its welcome card
+  open-academy false  -> one notification saying where the Academy is
+
+The desktop is never blocked. Re-run the welcome on purpose with
+`dconf write /org/pridwen/learner/welcomed false` and log in again.
+"""
+import os
+import pwd
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Notify", "0.7")
+from gi.repository import GLib, Notify  # noqa: E402
+
+PATH = "/org/pridwen/learner/"
+SKIP_USERS = {"gdm", "gnome-initial-setup"}
+SETTLE_S = 6
+LINGER_S = 120
+
+
+def log(msg):
+    print(f"pridwen-welcome: {msg}", file=sys.stderr, flush=True)
+
+
+def dconf_read(key):
+    try:
+        r = subprocess.run(["dconf", "read", PATH + key], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"dconf read {key} failed: {e}")
+        return ""
+
+
+def dconf_write(key, value):
+    try:
+        subprocess.run(["dconf", "write", PATH + key, value], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"dconf write {key} failed: {e}")
+
+
+def open_academy(*args):
+    try:
+        subprocess.Popen(["/usr/bin/pridwen-academy", *args], start_new_session=True)
+    except OSError as e:
+        log(f"could not start the Academy: {e}")
+
+
+def main():
+    user = pwd.getpwuid(os.getuid()).pw_name
+    if user in SKIP_USERS:
+        return 0
+    if dconf_read("welcomed") == "true":
+        return 0
+    # Mark first so a crash below cannot turn into a welcome on every login.
+    dconf_write("welcomed", "true")
+    want_open = dconf_read("open-academy") != "false"
+    log(f"first desktop for {user}; open-academy={'on' if want_open else 'off'}")
+    loop = GLib.MainLoop()
+
+    def go():
+        if want_open:
+            open_academy("--welcome")
+            loop.quit()
+            return False
+        try:
+            Notify.init("Pridwen")
+            note = Notify.Notification.new(
+                "The Academy is in your dock",
+                "Every lesson, mission, and lab lives there. The first mission takes ten minutes and only "
+                "asks you to find your footing in the terminal.", "pridwen")
+            note.set_timeout(30000)
+            note.add_action("open", "Open the Academy", lambda *_: (open_academy("--welcome"), loop.quit()))
+            note.connect("closed", lambda *_: loop.quit())
+            note.show()
+            GLib.timeout_add_seconds(LINGER_S, loop.quit)
+        except Exception as e:  # noqa: BLE001
+            log(f"notification failed: {e}")
+            loop.quit()
+        return False
+
+    GLib.timeout_add_seconds(SETTLE_S, go)
+    loop.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

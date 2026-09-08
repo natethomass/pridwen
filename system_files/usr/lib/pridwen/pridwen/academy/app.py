@@ -44,6 +44,14 @@ def dot(state):
     return lab
 
 
+def _body(markdown_line):
+    """One wrapped paragraph with inline code and bold."""
+    lab = Gtk.Label(xalign=0, wrap=True, use_markup=True)
+    lab.set_markup(md.inline(markdown_line))
+    lab.add_css_class("body")
+    return lab
+
+
 def scroll(child):
     sw = Gtk.ScrolledWindow(child=child, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
     return sw
@@ -84,9 +92,69 @@ class Academy(Adw.Application):
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]
         self.activate()
-        if args:
-            self.open_ref(args[0])
+        refs = [a for a in args if not a.startswith("--")]
+        if refs:
+            self.open_ref(refs[0])
+        if "--welcome" in args:
+            GLib.idle_add(self.show_welcome)
         return 0
+
+    # ---- guidance -----------------------------------------------------------
+    def home_track(self):
+        """The track the learner is on: Core until the others land (M4+)."""
+        return "core" if "core" in self.cat.tracks else next(iter(self.cat.tracks), None)
+
+    def next_up(self):
+        """-> (mission, track) for the next unverified mission on the home track, or (None, track)."""
+        tid = self.home_track()
+        if tid is None:
+            return None, None
+        tp = self.prog.track_progress(tid)
+        mid = tp.get("next")
+        return (self.cat.missions.get(mid) if mid else None), self.cat.tracks[tid]
+
+    def show_welcome(self):
+        """The first-desktop card: what the Academy is, and the one thing to do next."""
+        m, t = self.next_up()
+        dlg = Adw.Dialog(title="Welcome to the Academy", content_width=560)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin_top=8, margin_bottom=24, margin_start=28, margin_end=28)
+        box.append(Adw.HeaderBar(show_title=False, css_classes=["flat"]))
+        head = Gtk.Box(spacing=14)
+        img = Gtk.Image.new_from_icon_name("pridwen")
+        img.set_pixel_size(64)
+        head.append(img)
+        title = Gtk.Label(label="This is where the learning lives", xalign=0, wrap=True, css_classes=["title-2"])
+        head.append(title)
+        box.append(head)
+        for para in (
+            "Pridwen is a full desktop, and nothing here is locked away. The Academy is the map of what the "
+            "system can teach you: a tree of skills, each one a few lessons and a mission.",
+            "A mission is verified when a checker looks at this machine and sees the result. Nobody grades a quiz; "
+            "the computer either has the file, the permission, or the running service, or it does not.",
+            "The Coach watches your terminal. When a command fails it prints one line saying what happened and "
+            "which lesson explains it. `pridwen why` tells the whole story. The Journal here keeps every hint.",
+            "Lessons over-explain on purpose. Every command is shown with what it prints and what each flag "
+            "means, so skip ahead whenever you already know a thing.",
+        ):
+            box.append(_body(para))
+        if m is not None:
+            box.append(_body(f"**Start here:** {m.title}. About {m.minutes} minutes, on this machine, no administrator rights needed."))
+        buttons = Gtk.Box(spacing=10, halign=Gtk.Align.END, margin_top=8)
+        later = Gtk.Button(label="Look around first")
+        later.connect("clicked", lambda *_: dlg.close())
+        buttons.append(later)
+        if m is not None:
+            go = Gtk.Button(label="Start the first mission", css_classes=["suggested-action"])
+
+            def start(*_):
+                dlg.close()
+                self.push(self.page_mission(m.id))
+            go.connect("clicked", start)
+            buttons.append(go)
+        box.append(buttons)
+        dlg.set_child(box)
+        dlg.present(self.win)
+        return False
 
     def do_activate(self):
         if self.win is None:
@@ -175,6 +243,17 @@ class Academy(Adw.Application):
         lede = Gtk.Label(label="Verified means a checker saw it on a real system. Locked nodes open when what they build on is verified.", xalign=0, wrap=True)
         lede.add_css_class("pridwen-lede")
         box.append(lede)
+        m, t = self.next_up()
+        if t is not None:
+            banner = Adw.Banner(revealed=True)
+            if m is not None:
+                tp = self.prog.track_progress(t.id)
+                banner.set_title(f"Next up in {t.title}: {m.title} · about {m.minutes} min · {tp['verified']}/{tp['total']} nodes verified")
+                banner.set_button_label("Open")
+                banner.connect("button-clicked", lambda *_: self.push(self.page_mission(m.id)))
+            else:
+                banner.set_title(f"{t.title} is complete. Every node on it is verified.")
+            box.append(banner)
         for tier, nodes in (self.lib.tree.get("tiers") or {}).items():
             group = Adw.PreferencesGroup(title=tier.capitalize())
             for nid in nodes:

@@ -4,7 +4,7 @@
 
 set -ouex pipefail
 
-PRIDWEN_VERSION="0.3.0-m2"
+PRIDWEN_VERSION="0.3.1-m3"
 IMAGE_REF="ghcr.io/natethomass/pridwen"
 
 ### 1. Overlay files from system_files/ onto /
@@ -90,7 +90,7 @@ chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
 # First boot: the Pridwen wizard runs inside GDM's initial-setup session instead of
 # GNOME Initial Setup (drop-in on gnome-initial-setup.service). The existing-user
 # first-login pass is not wanted.
-chmod 0755 /usr/libexec/pridwen-firstboot
+chmod 0755 /usr/libexec/pridwen-firstboot /usr/libexec/pridwen-welcome
 systemctl --global mask gnome-initial-setup-first-login.service
 
 # Narrated boot lines and the day/night switcher.
