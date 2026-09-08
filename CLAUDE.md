@@ -274,6 +274,26 @@ structure). Slices:
    encrypted). M3 is functionally complete; the only open item is the owner's own end-to-end
    Core track playthrough.
 
+## M4 status (2026-09-08, design done)
+
+Design: `docs/range.md`. Range invents no new progress model — a scenario chair *is* a
+`Mission`, so node/track state, the journal, and Academy's pages work unchanged; what Range
+adds is where a check runs. Key decisions: one `Executor` abstraction retargets the existing
+`CHECK_TYPES` at `podman exec` (container) or SSH (VM) instead of the host, with the hard rule
+that targets only ever return bytes and every regex matches in Python, never on the target;
+containers reset via `podman commit :seeded` + recreate (not CRIU checkpoint, which is fragile
+under rootless+systemd), VMs via a running libvirt snapshot; rootless Podman + session-mode
+libvirt need no new group or polkit rule beyond a subuid range and sometimes `kvm`; two-chair
+attack/defend scenarios (`quiet-cron`) are one shared environment and two `Mission`s linked by
+a new `after` gate, with the defend chair starting `from:` a post-attack image commit so it
+inherits the attacker's journal and audit log. 24-scenario inventory: 12 RHCSA (10 container,
+2 VM), 6 defend, 6 attack, with `quiet-cron` and `spray` each supplying one defend and one
+attack chair. Known gap called out in the doc itself: VM targets need nested virtualization,
+which the current VirtualBox test VMs don't have (host runs Hyper-V) — `rhcsa-11-lvm`,
+`rhcsa-12-boot`, and `def-04-timeline` will need bare metal or Proxmox with nested KVM to
+verify; the 10 container RHCSA scenarios and all 6 network scenarios can be iterated on in the
+existing VMs. Not yet implemented: this is the design pass only.
+
 ## The mark
 
 The Pridwen mark is "Chief": a heater shield with a chevron cut out, chosen by the owner on
