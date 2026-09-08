@@ -274,7 +274,7 @@ structure). Slices:
    encrypted). M3 is functionally complete; the only open item is the owner's own end-to-end
    Core track playthrough.
 
-## M4 status (2026-09-08, design done)
+## M4 status (2026-09-08, slice 2 landed)
 
 Design: `docs/range.md`. Range invents no new progress model — a scenario chair *is* a
 `Mission`, so node/track state, the journal, and Academy's pages work unchanged; what Range
@@ -292,7 +292,32 @@ attack chair. Known gap called out in the doc itself: VM targets need nested vir
 which the current VirtualBox test VMs don't have (host runs Hyper-V) — `rhcsa-11-lvm`,
 `rhcsa-12-boot`, and `def-04-timeline` will need bare metal or Proxmox with nested KVM to
 verify; the 10 container RHCSA scenarios and all 6 network scenarios can be iterated on in the
-existing VMs. Not yet implemented: this is the design pass only.
+existing VMs.
+
+Slices:
+
+1. **Executor refactor** (36e59af): `missions.py` gained `HostExecutor`/`HOST`,
+   `run_check(c, allow_sudo=False, executor=HOST)`, the six Range-only check types,
+   host-only/range-only refusal guards, `expect: absent`, and `Mission.nodes`/`Mission.after`
+   for chairs. Verified by smoke-testing against all 20 real Core missions (identical
+   behavior) plus a simulated container-style executor (argv-translated path_type/
+   path_contains/path_exists all correct). No behavior change for any existing mission.
+2. **Container runner + first scenario** (fda2b2c): `pridwen.range` package
+   (`Catalog`/`Scenario`/`Target`, `ContainerExecutor`, `podman.py` lifecycle, `images.py`,
+   `runner.py`), `pridwen range list|show|start|enter|check|reset|stop|status`, and
+   `rhcsa-01-users` (a Rocky 9 container with a compliance account broken six ways). Container
+   targets only, per the design's own "build against one target kind first" advice; VM/libvirt,
+   network targets, chairs, Dispatch, the Academy Range page, and `pridwen range doctor|clean|
+   images` are all later slices. `images.yaml`'s `rocky9-init` digest was checked against the
+   live quay.io registry, not invented. Driven end-to-end with `pridwen.cli.main()`
+   (`PRIDWEN_SHARE` pointed at the repo) since podman itself is not installed on this Windows
+   dev machine — container creation/exec is unverified until a real boot test.
+   **Known integration gap**: `pridwen range check` builds its own Range-only `Catalog`/
+   `Progress`, so it cannot see a host mission on the same node (e.g. `users` also has
+   `core-05-users.yaml`) and would risk a wrong combined node state — the node-state line
+   was removed from its success message rather than shipped wrong. `Progress.record()` still
+   writes to the one real store, so no data is wrong, only that one printed line was. Merging
+   the host and Range catalogs into one is required before Academy gets a Range page.
 
 ## The mark
 
