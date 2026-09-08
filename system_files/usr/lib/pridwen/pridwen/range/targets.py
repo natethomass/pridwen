@@ -14,7 +14,11 @@ class ContainerExecutor:
         self.name = name
 
     def run(self, argv, sudo=False, timeout=20):
-        cmd = ["podman", "exec", "-u", "root", self.name, "--", *argv]
+        # No "--" separator: confirmed live that this podman passes it straight to
+        # crun as the command to run ("executable file `--` not found in $PATH"),
+        # rather than treating it as an end-of-options marker. `-u root` before the
+        # container name is unambiguous without one.
+        cmd = ["podman", "exec", "-u", "root", self.name, *argv]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             return r.returncode, r.stdout, r.stderr
