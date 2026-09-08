@@ -1,6 +1,11 @@
 rocky9-init:
   kind: container
   ref: quay.io/rockylinux/rockylinux
-  digest: sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
+  # The plain `9` tag has no systemd package at all (confirmed live: `rpm -q systemd`
+  # said "package systemd is not installed", so `podman start` failed with "crun:
+  # executable file /sbin/init not found"). `9-ubi-init` is Rocky's systemd-carrying
+  # variant (confirmed live: rpm -q systemd -> systemd-252-67.el9_8.4.rocky.0.1.x86_64),
+  # verified against the live quay.io registry API for that tag, not invented.
+  digest: sha256:97651f6fcac61132e22bdd164599624da80c55be9fce9ab7f2ae0e11620e427b
   about: Rocky Linux 9 with systemd as PID 1. The target for most container scenarios.
-  size_mb: 250
+  size_mb: 350
