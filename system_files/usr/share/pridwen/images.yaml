@@ -1,0 +1,6 @@
+rocky9-init:
+  kind: container
+  ref: quay.io/rockylinux/rockylinux
+  digest: sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
+  about: Rocky Linux 9 with systemd as PID 1. The target for most container scenarios.
+  size_mb: 250

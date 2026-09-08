@@ -1,0 +1,96 @@
+id: rhcsa-01-users
+title: Fix the auditor account
+kind: container
+track: rhcsa
+node: users
+required: true
+minutes: 25
+requires_images: [rocky9-init]
+
+targets:
+  - name: users-01
+    image: rocky9-init
+    memory: 1g
+    pids: 512
+    seed: seed/users-01.sh
+
+enter: users-01
+brief: brief.md
+steps:
+  - Look at the auditor account as it stands, with `id`, `getent passwd`, `passwd -S` and `chage -l`, before you change anything.
+  - Give it the UID compliance says it must have, without losing track of what it already owns.
+  - Add it to the group that grants sudo, without removing the group it is already in.
+  - Give it a real login shell and hand its home directory back to it.
+  - Unlock its password and clear the expiration date so it can actually log in today.
+hints:
+  - >-
+    Six separate facts about this account are wrong: its UID, its login
+    shell, which groups it belongs to, who owns its home directory, whether
+    its password is usable, and whether it has an expiration date in the
+    past. `id auditor`, `getent passwd auditor`, `passwd -S auditor`, and
+    `chage -l auditor` show you each one before you touch anything.
+  - >-
+    `usermod` changes an existing account: `-u` for the UID, `-s` for the
+    shell, `-aG` to add a supplementary group while keeping the ones already
+    there (plain `-G` would replace them). `chown -R` fixes a directory tree's
+    ownership after you decide who should own it. `passwd -u` clears a lock
+    without touching the hash underneath it, and `chage -E` sets, or with
+    `-1` clears, the expiration date.
+  - >-
+    In order, inside `pridwen range enter rhcsa-01-users`:
+    `usermod -u 2001 auditor`, `usermod -s /bin/bash auditor`,
+    `usermod -aG wheel auditor`, `chown -R auditor:auditors /home/auditor`,
+    `passwd -u auditor`, `chage -E -1 auditor`. Confirm with `id auditor`,
+    `getent passwd auditor`, `passwd -S auditor`, and `chage -l auditor`.
+checks:
+  - id: uid
+    type: cmd_output
+    cmd: ["id", "-u", "auditor"]
+    regex: '^2001$'
+    fail: >-
+      `id -u auditor` says {actual}, not 2001. `usermod -u 2001 auditor`
+      changes the UID; `chown -R auditor:auditors /home/auditor` afterwards
+      makes sure its home directory is not left owned by a number that no
+      longer belongs to anyone.
+  - id: shell
+    type: cmd_output
+    cmd: ["getent", "passwd", "auditor"]
+    regex: ':/bin/bash$'
+    fail: >-
+      `getent passwd auditor` shows {actual}, and the last field is still
+      `/sbin/nologin`, a shell that refuses every interactive login.
+      `usermod -s /bin/bash auditor` sets a real one without touching
+      anything else about the account.
+  - id: wheel
+    type: group_member
+    user: auditor
+    group: wheel
+    fail: >-
+      `id -nG auditor` lists {actual} and does not include `wheel`, so
+      auditor cannot use sudo yet. `usermod -aG wheel auditor` adds a
+      supplementary group; `-G` alone would replace every group auditor is
+      already in instead of adding one.
+  - id: home-owner
+    type: path_owner
+    path: /home/auditor
+    owner: auditor
+    group: auditors
+    fail: >-
+      `/home/auditor` is owned by {actual}, not `auditor:auditors`.
+      `chown -R auditor:auditors /home/auditor` fixes the whole tree in one
+      pass.
+  - id: unlocked
+    type: cmd_output
+    cmd: ["passwd", "-S", "auditor"]
+    regex: '^auditor\s+P\s'
+    fail: >-
+      `passwd -S auditor` reports {actual}; the second field is `L`, locked,
+      not `P`, usable. `passwd -u auditor` unlocks it without changing the
+      password underneath.
+  - id: no-expiry
+    type: cmd_exit
+    cmd: ["bash", "-c", "chage -l auditor | grep -q 'Account expires.*: *never'"]
+    fail: >-
+      `chage -l auditor` still names a date instead of `never` for when the
+      account expires (exit {actual} from a check for that line). `chage -E
+      -1 auditor` clears the expiration.

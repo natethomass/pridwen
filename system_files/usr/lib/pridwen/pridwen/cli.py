@@ -23,6 +23,7 @@ USAGE = """pridwen: the Coach's pull side.
   pridwen track [id]           track progress
   pridwen journal [note ...]   the journal, or add a note
   pridwen posture              the hardening baseline, pass/drift
+  pridwen range list [track] | show|start|enter|check|reset|stop <id>
   pridwen version
 
 Docs: /usr/share/doc/pridwen/coach.md
@@ -385,9 +386,112 @@ def cmd_posture(args, lib, store):
     return 0
 
 
+def cmd_range(args, lib, store):
+    from .missions import Progress
+    from .range import runner
+    cat = runner.catalog()
+    prog = Progress(store, lib, cat)
+    if cat.errors:
+        for e in cat.errors:
+            out(f"  ! {e}")
+    sub = args[0] if args else "list"
+    if sub == "list":
+        tid = args[1] if len(args) > 1 else None
+        ids = [m.id for m in cat.for_track(tid)] if tid else sorted(cat.missions)
+        for mid in ids:
+            m = cat.missions.get(mid)
+            if not m:
+                continue
+            sid, _chair = cat.mission_scenario[mid]
+            sc = cat.scenarios[sid]
+            out(f"  {STATE_MARK[prog.mission_state(mid)]} {mid:<28} {m.title}  ({sc.kind}, {m.minutes} min, {m.node})")
+        return 0
+    if sub == "status":
+        rows = runner.status(cat)
+        if not rows:
+            out(text.para("Nothing is running. `pridwen range start <id>` brings a scenario up."))
+            return 0
+        for r in rows:
+            out(f"  {r['scenario']:<28} {r['target']:<14} {r['state']}")
+        return 0
+    if len(args) < 2 or args[1] not in cat.missions:
+        out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status")
+        return 2
+    mid = args[1]
+    m = cat.missions[mid]
+    sid, _chair = cat.mission_scenario[mid]
+    sc = cat.scenarios[sid]
+    if sub == "show":
+        out(text.render(f"# {m.title}\n\n{m.brief}"))
+        out(text.para("Steps:"))
+        for i, s in enumerate(m.steps, 1):
+            out(text.render(f"{i}. {s}"))
+        out(text.para(f"Checks: {len(m.checks)}  ·  target {sc.kind}  ·  node {m.node}  ·  about {m.minutes} min  ·  state {prog.mission_state(mid)}"))
+        return 0
+    if sub == "start":
+        try:
+            name = runner.start(mid, cat)
+        except runner.RunnerError as e:
+            out(text.hint(str(e), None))
+            return 1
+        out(text.hint(f"{sid} is up. `pridwen range enter {mid}` gets you a root shell on {name}.", None))
+        return 0
+    if sub == "enter":
+        target = args[2] if len(args) > 2 else None
+        try:
+            runner.enter(mid, target, cat)
+        except runner.RunnerError as e:
+            out(text.hint(str(e), None))
+            return 1
+        return 0
+    if sub == "check":
+        allow_sudo = "--sudo" in args
+        try:
+            results = runner.check(mid, allow_sudo=allow_sudo, store=store, lib=lib, cat=cat)
+        except runner.RunnerError as e:
+            out(text.hint(str(e), None))
+            return 1
+        use_colour = text.colour_enabled()
+        for cid, ok, msg in results:
+            mark = (f"{text.SAGE}✓{text.RESET}" if ok else f"{text.CLAY}✗{text.RESET}") if use_colour else ("ok " if ok else "no ")
+            out(text.wrap_coloured(text.code_spans(msg, use_colour=use_colour), text.width(), f"  {mark} {cid}: ", "       "))
+        out()
+        passed = all(ok for _, ok, _ in results)
+        if passed:
+            # Not node_state(): this catalog only knows Range missions, and a node can
+            # also carry a host mission that this Progress instance cannot see (see
+            # CLAUDE.md, M4 status, "known integration gap" — the host and Range
+            # catalogs are not yet merged), so a combined node state would risk being
+            # wrong. Recorded in the same store either way; only the printed summary
+            # is scoped back to what this command actually knows.
+            out(text.hint(f"Verified: {m.title}.", None))
+        else:
+            out(text.hint("Not yet. Fix what is marked and check again; `pridwen range show " + mid + "` has hints.", None))
+        return 0 if passed else 1
+    if sub == "reset":
+        target = args[2] if len(args) > 2 else None
+        try:
+            runner.reset(mid, target, cat)
+        except runner.RunnerError as e:
+            out(text.hint(str(e), None))
+            return 1
+        out(text.hint(f"{sid} is back to :seeded.", None))
+        return 0
+    if sub == "stop":
+        try:
+            runner.stop(mid, cat)
+        except runner.RunnerError as e:
+            out(text.hint(str(e), None))
+            return 1
+        out(text.hint(f"{sid} stopped; the seeded image is kept.", None))
+        return 0
+    out("usage: pridwen range list [track] | show|start|enter|check|reset|stop <id> | status")
+    return 2
+
+
 COMMANDS = {"why": cmd_why, "explain": cmd_explain, "learn": cmd_learn, "quiet": cmd_quiet, "status": cmd_status,
             "dispatch": cmd_dispatch, "mission": cmd_mission, "track": cmd_track, "journal": cmd_journal,
-            "posture": cmd_posture}
+            "posture": cmd_posture, "range": cmd_range}
 
 
 def main(argv):
