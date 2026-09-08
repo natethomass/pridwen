@@ -260,7 +260,19 @@ structure). Slices:
    dialog naming the first unverified mission or posts a Dispatch notification, per the
    wizard's new Academy page (`/org/pridwen/learner/open-academy`, default on). The Tree page
    also gained an `Adw.Banner` naming the next mission. Defaults ship in
-   `etc/dconf/db/distro.d/30-pridwen-learner`. Version 0.3.1-m3. Not yet verified in a VM.
+   `etc/dconf/db/distro.d/30-pridwen-learner`. Version 0.3.1-m3.
+5. **Verify in VM** (2026-09-08, "Pridwen M1 fresh" already on 0.3.1-m3): confirmed via
+   screenshots and injected keystrokes (no guest additions, so no clipboard/exec into the
+   guest; VBoxManage `keyboardputscancode`/`keyboardputstring` only). `PRETTY_NAME` reads the
+   new version; resetting `/org/pridwen/learner/welcomed` and running `pridwen-welcome`
+   reproduced the real first-login path exactly: settle delay, the welcome dialog with the
+   live next-mission line, and after dismissing it the Tree page banner ("Next up in Pridwen
+   Core: Sort the inbox · about 15 min · 1/18 nodes verified"). Opened the rewritten `boot-01`
+   lesson directly (`pridwen-academy boot-01`): glossary, inline code, and bold all render
+   correctly. Posture panel live-evaluates on this VM (SELinux/sshd/sudo/immutability pass;
+   LUKS and kernel-pointer hiding correctly show Drift, since this VM was never installed
+   encrypted). M3 is functionally complete; the only open item is the owner's own end-to-end
+   Core track playthrough.
 
 ## The mark
 
