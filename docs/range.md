@@ -526,6 +526,12 @@ ends up twinned with a Defend node because they share the manifest.
 The lifecycle is create → seed → commit → run, and reset throws away the
 container, never the seeded image.
 
+`--systemd=always` only prepares systemd-friendly mounts and the stop signal;
+it does not replace the image's own `CMD`. Rocky's base image `CMD` is
+`/bin/bash`, which under `podman create` reads no stdin and exits at once
+(confirmed live in the M1 test VM: the container showed `Exited (0)` seconds
+after `podman start`), so the command is named explicitly, `/sbin/init`.
+
 ```
 podman network create --internal --subnet 10.66.12.0/24 pridwen-quiet-cron
 podman create --name pridwen-quiet-cron-web-01 --hostname web-01 \
@@ -533,7 +539,7 @@ podman create --name pridwen-quiet-cron-web-01 --hostname web-01 \
     --systemd=always --stop-signal SIGRTMIN+3 \
     --memory 1g --pids-limit 512 \
     --label pridwen.scenario=quiet-cron --label pridwen.target=web-01 \
-    quay.io/rockylinux/rockylinux@sha256:<pinned>
+    quay.io/rockylinux/rockylinux@sha256:<pinned> /sbin/init
 podman start pridwen-quiet-cron-web-01
 podman cp <scenario dir>/files/. pridwen-quiet-cron-web-01:/opt/range/
 podman exec pridwen-quiet-cron-web-01 bash /opt/range/../seed/web-01.sh

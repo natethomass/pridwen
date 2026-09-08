@@ -48,12 +48,17 @@ def seeded_tag(scenario_id, target_name):
 
 
 def _create_argv(name, scenario_id, target, image_ref):
+    # --systemd=always only prepares systemd-friendly mounts and the stop signal; it does
+    # not replace the image's own CMD. Rocky's base image CMD is /bin/bash, which reads no
+    # stdin under `podman create` and exits immediately (confirmed live: the container
+    # showed "Exited (0)" right after start), so the container's actual init must be named
+    # explicitly.
     return [
         "podman", "create", "--name", name, "--hostname", target.name,
         "--systemd=always", "--stop-signal", "SIGRTMIN+3",
         "--memory", str(target.memory), "--pids-limit", str(target.pids),
         "--label", f"pridwen.scenario={scenario_id}", "--label", f"pridwen.target={target.name}",
-        image_ref,
+        image_ref, "/sbin/init",
     ]
 
 
